@@ -1,0 +1,150 @@
+# Governance policies -- unified set, one coherent list.
+# Every policy is evaluated against every repo (real or fake). The
+# "applies_when" field is what makes this coherent rather than needing
+# separate categories: most policies genuinely apply everywhere; the one
+# that doesn't (DM-2) is explicitly conditional and returns NOT_APPLICABLE
+# rather than being force-fit or excluded from certain repos.
+#
+# Schema: policy_id, title, description, evaluation_hint, severity,
+# applies_when
+
+policies:
+
+  - policy_id: DQ-1
+    title: Data quality validation present
+    description: >
+      Before data is written downstream or used for analysis/training, it
+      should be checked for basic quality issues -- missing values,
+      duplicates, out-of-range values, leakage -- rather than trusted
+      blindly.
+    applies_when: >
+      Any code that loads a dataset and then uses it further: writes it to
+      a table, uses it for feature engineering, or trains a model on it.
+    evaluation_hint: >
+      Search for validation logic appearing after data is loaded and
+      before it is used further. Any of the following counts as
+      compliant: (a) Databricks Lakeflow expectation decorators
+      (@dp.expect_all, @dp.expect_all_or_drop, @dp.expect_all_or_fail) or a
+      CONSTRAINT ... EXPECT clause; (b) a Great Expectations, pandera, or
+      PyDeequ validation call; (c) explicit programmatic checks (assert /
+      raise / filter) validating null counts, duplicate counts, value
+      ranges, or train/test leakage. If data is loaded and used with no
+      such checks anywhere in the file, flag NON_COMPLIANT.
+    severity: HIGH
+
+  - policy_id: OPS-2
+    title: Logging and monitoring
+    description: >
+      Any pipeline job or model training run should log progress and
+      errors in a way that persists after the session ends, rather than
+      relying on terminal output or print statements.
+    applies_when: >
+      Any pipeline expected to run on a schedule or unattended, and any
+      model training or long batch-processing run.
+    evaluation_hint: >
+      Search for use of Python's logging module rather than exclusive
+      reliance on print(). Check for: (1) a log or metric call marking the
+      start and end of a run; (2) exception handling that logs the error
+      (logger.error / logger.exception) rather than a bare except: pass;
+      (3) if a training loop, whether metrics are captured somewhere
+      persistent (MLflow, Weights & Biases, a logged file, or a queryable
+      event log) rather than only printed to screen. Flag NON_COMPLIANT if
+      the file relies only on print() with no persistent record and no
+      error-path logging.
+    severity: MEDIUM
+
+  - policy_id: SEC-3
+    title: No hardcoded secrets or credentials
+    description: >
+      API keys, database connection strings, tokens, and passwords must
+      never appear directly in code or notebook cells, committed or not.
+    applies_when: "Every repo."
+    evaluation_hint: >
+      Search all code and notebook cells for patterns resembling API keys,
+      connection strings with embedded passwords, or tokens (e.g.
+      postgresql://user:password@host, api_key = "sk-...", hardcoded AWS
+      credentials). Environment variable usage (os.environ, os.getenv) or
+      a secrets manager reference is compliant. A literal credential value
+      assigned directly in code is NON_COMPLIANT regardless of repo
+      visibility.
+    severity: HIGH
+
+  - policy_id: PII-4
+    title: No raw PII exposed in outputs
+    description: >
+      Data containing direct identifiers (names, emails, etc.) should
+      never appear in a saved notebook output, a print statement, or a log
+      line -- regardless of access controls on the source data.
+    applies_when: >
+      Any code that loads data containing potential direct identifiers
+      (name, email, ssn, phone, address) and displays, prints, or logs it.
+    evaluation_hint: >
+      Check saved notebook cell outputs and any print()/log statements for
+      dataframes or values containing identifier-like columns with
+      real-looking, non-masked, non-synthetic values visible. Using
+      .head() on a masked or synthetic sample, redacting before display,
+      or clearing notebook outputs before commit is compliant. Flag
+      NON_COMPLIANT if raw identifier values are visible in a saved output
+      or a print/log statement.
+    severity: HIGH
+
+  - policy_id: NAM-5
+    title: Project structure and naming conventions
+    description: >
+      Repos should follow a consistent, predictable structure so anyone
+      can navigate an unfamiliar project quickly.
+    applies_when: "Every repo."
+    evaluation_hint: >
+      Check for: (1) raw/original data kept in a distinct location, never
+      overwritten in place; (2) notebooks named with an ordering prefix
+      and short description (e.g. 01-initial-eda.ipynb), not vague names
+      like Untitled.ipynb, final.ipynb, or final_v2_ACTUAL.ipynb; (3)
+      lowercase, hyphen/underscore separated names with no spaces; (4) a
+      README describing the project's purpose and structure. Flag
+      NON_COMPLIANT for vague/versioned-in-name files or a missing README.
+    severity: LOW
+
+  - policy_id: REPRO-6
+    title: Reproducibility
+    description: >
+      A project's results should be reproducible by someone other than the
+      original author: pinned dependencies, fixed random seeds, immutable
+      raw data.
+    applies_when: >
+      Any code involving model training, random sampling, or statistical
+      analysis with a stochastic component.
+    evaluation_hint: >
+      Check for: (1) a requirements.txt, environment.yml, or pyproject.toml
+      with pinned, not floating/unversioned, package versions; (2) random
+      seeds explicitly set for any stochastic step (np.random.seed,
+      random.seed, random_state= in sklearn, or framework equivalents);
+      (3) raw data read-only or copied rather than transformed in place.
+      Flag NON_COMPLIANT if dependencies are unpinned, no random seed is
+      set anywhere in a training/sampling step, or raw source files are
+      directly overwritten by processing code.
+    severity: MEDIUM
+
+  - policy_id: DM-7
+    title: Star schema / shared output table design
+    description: >
+      When code produces a structured table meant for reuse by other
+      people or systems, it should have a clear key, documented columns,
+      and no ambiguous duplicates -- this is the one policy that is
+      genuinely conditional, not universal.
+    applies_when: >
+      Only when the code writes a structured table or file explicitly
+      intended for reuse outside itself: a shared database table, a
+      feature store, or an output meant for another team or pipeline to
+      consume. Does NOT apply to exploratory notebooks, one-off analysis,
+      or intermediate files never intended for reuse -- return
+      NOT_APPLICABLE for those rather than a compliance verdict.
+    evaluation_hint: >
+      First check whether the code writes such a reusable output. If not,
+      return NOT_APPLICABLE. If it does, check: (1) is the grain or
+      primary key documented (comment, docstring, or README); (2) do joins
+      use a stable surrogate/generated key rather than a raw natural key;
+      (3) is any foreign/join key ever allowed to be null without an
+      explicit "unknown" fallback; (4) is there documentation describing
+      what one row represents. Flag NON_COMPLIANT only if these basics are
+      missing on a table genuinely meant for reuse.
+    severity: MEDIUM
