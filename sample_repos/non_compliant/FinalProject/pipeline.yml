@@ -1,0 +1,15 @@
+trigger:
+  branches:
+    include:
+      - main
+      - my-analysis-branch
+      - hotfix
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: pip install -r requirements.txt
+    displayName: Install deps
+  - script: python final_v2_ACTUAL.py
+    displayName: Run analysis

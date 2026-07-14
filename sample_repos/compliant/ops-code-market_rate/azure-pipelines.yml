@@ -1,0 +1,32 @@
+trigger:
+  branches:
+    include:
+      - master
+      - develop
+
+pr:
+  branches:
+    include:
+      - master
+      - develop
+  autoComplete: false
+  reviewers:
+    minimumApprovers: 1
+
+pool:
+
+  vmImage: ubuntu-latest
+
+stages:
+  - stage: Validate
+    displayName: "Policy and quality checks"
+    jobs:
+      - job: RunChecks
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.11"
+          - script: pip install -r requirements.txt
+            displayName: "chore: install pinned dependencies"
+          - script: python -m pytest tests/ -v
+            displayName: "feat: run unit and policy tests"

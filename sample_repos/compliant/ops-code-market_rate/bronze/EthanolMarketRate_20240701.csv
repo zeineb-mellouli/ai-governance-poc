@@ -1,0 +1,8 @@
+product_key,market_date,price_usd,volume_tonnes,source_region
+ETH001,2024-07-01,450.50,1200.0,Europe
+ETH002,2024-07-01,448.75,980.5,Asia
+ETH003,2024-07-01,452.00,1450.0,Americas
+ETH004,2024-07-01,447.25,870.0,Middle East
+ETH005,2024-07-01,451.10,1100.0,Europe
+ETH006,2024-07-01,449.80,960.0,Asia
+ETH007,2024-07-01,453.25,1320.0,Americas

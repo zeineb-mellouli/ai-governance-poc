@@ -1,0 +1,45 @@
+# ── Secrets (Constitution I: never commit credentials) ────────────────────
+.env
+
+# ── Data layers (bronze is immutable; gold/silver are derived) ────────────
+data/landing/*
+data/bronze/*
+data/silver/*
+data/gold/*
+
+# Preserve tracked .gitkeep markers so empty folders stay in the repo
+!data/**/.gitkeep
+!data/landing/.gitkeep
+!data/bronze/CodePolymer_Pricing/.gitkeep
+!data/silver/CodePolymer_Pricing/.gitkeep
+!data/gold/CodePolymer_Pricing/.gitkeep
+
+# ── Log files (Constitution IV: file-based logging) ───────────────────────
+logs/*
+!logs/.gitkeep
+
+# ── Python bytecode & caches ──────────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Intermediate binary formats ───────────────────────────────────────────
+*.parquet
+
+# ── OS / editor artefacts ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+.vscode/settings.json
+
+# ── Virtual environments ──────────────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Distribution / build ──────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/

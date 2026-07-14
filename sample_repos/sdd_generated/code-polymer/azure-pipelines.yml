@@ -1,0 +1,37 @@
+# azure-pipelines.yml
+# Polymer Pricing ETL Pipeline — CI build
+#
+# Triggers on pushes to master and develop branches.
+# Runs lint (flake8) and unit tests (pytest).
+# Integration tests are excluded from CI — they require a live Azure SQL
+# connection and are run manually or in a separate release pipeline.
+#
+# NOTE (Constitution VIII — Git Workflow): The minimum-1-reviewer PR policy
+# CANNOT be configured in this YAML file. It must be set in Azure DevOps:
+#   Repos → Branches → [master | develop] → Branch policies →
+#   "Require a minimum number of reviewers" → set to 1
+#   Also enable "Build validation" and link this pipeline.
+
+trigger:
+  branches:
+    include:
+      - master
+      - develop
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.11"
+    displayName: "Use Python 3.11"
+
+  - script: pip install -r requirements.txt
+    displayName: "Install pinned dependencies"
+
+  - script: flake8 pipeline/ tests/ --max-line-length=120
+    displayName: "Lint — flake8"
+
+  - script: pytest tests/unit/ -v -m "not integration"
+    displayName: "Unit tests — pytest (no DB required)"

@@ -1,9 +1,16 @@
 # Governance policies -- unified set, one coherent list.
+# Sources:
+#   - Internal Git Workflow Guide (Nilton Ferreira, Nov 2025)
+#   - File Naming Convention (Jordan Russell, Oct 2025)
+#   - Repository Naming Convention (Nilton Ferreira, Nov 2025)
+#   - SQL Naming Conventions (Jordan Russell, Oct 2025)
+#   - Data quality, security, and reproducibility best practices
+#
 # Every policy is evaluated against every repo (real or fake). The
 # "applies_when" field is what makes this coherent rather than needing
-# separate categories: most policies genuinely apply everywhere; the one
-# that doesn't (DM-2) is explicitly conditional and returns NOT_APPLICABLE
-# rather than being force-fit or excluded from certain repos.
+# separate categories: most policies genuinely apply everywhere; those
+# that don't (e.g. DM-7) are explicitly conditional and return
+# NOT_APPLICABLE rather than being force-fit or excluded from certain repos.
 #
 # Schema: policy_id, title, description, evaluation_hint, severity,
 # applies_when
@@ -89,19 +96,37 @@ policies:
     severity: HIGH
 
   - policy_id: NAM-5
-    title: Project structure and naming conventions
+    title: File and folder naming convention
     description: >
-      Repos should follow a consistent, predictable structure so anyone
-      can navigate an unfamiliar project quickly.
+      All files and folders must follow the organisation's naming convention.
+      Dataset and file names are written in CamelCase. Folder structure uses
+      the pattern <Project>_<Feature> (e.g. Polymers_MarketRate). File names
+      follow <DatasetName>_<yyyyMMdd> (e.g. EthanolMarketRate_20240701.csv).
+      Rules that apply to all names: begin with a letter; do not end with an
+      underscore; only letters, numbers, and underscores; no consecutive
+      underscores; no spaces; max 126 characters; avoid abbreviations unless
+      commonly understood. Column names in data files (CSV, Parquet) use
+      snake_case and are always singular. A README describing the project's
+      purpose and structure is required at the repository root.
     applies_when: "Every repo."
     evaluation_hint: >
-      Check for: (1) raw/original data kept in a distinct location, never
-      overwritten in place; (2) notebooks named with an ordering prefix
-      and short description (e.g. 01-initial-eda.ipynb), not vague names
-      like Untitled.ipynb, final.ipynb, or final_v2_ACTUAL.ipynb; (3)
-      lowercase, hyphen/underscore separated names with no spaces; (4) a
-      README describing the project's purpose and structure. Flag
-      NON_COMPLIANT for vague/versioned-in-name files or a missing README.
+      Inspect all filenames, folder names, and data file column headers for:
+      (1) CamelCase on dataset/file names -- flag snake_case, all-lowercase,
+      or space-separated file names as NON_COMPLIANT
+      (e.g. ethanol_market_rate.csv or "Ethanol Market Rate.csv" are violations;
+      EthanolMarketRate_20240701.csv is compliant);
+      (2) date suffixes must be yyyyMMdd format -- flag yyyy-MM-dd, dd-MM-yyyy,
+      or any other variant as NON_COMPLIANT;
+      (3) folder names following <Project>_<Feature> -- flag a flat root with
+      no project/feature separation as NON_COMPLIANT;
+      (4) vague or versioned names anywhere in the tree: Untitled, final, copy,
+      v2, ACTUAL, temp, test123 -- flag as NON_COMPLIANT;
+      (5) names ending with underscore, containing consecutive underscores, or
+      containing spaces -- flag as NON_COMPLIANT;
+      (6) names starting with a digit or special character -- flag as NON_COMPLIANT;
+      (7) data file column headers not in snake_case, or plural column names
+      (e.g. customers, products) -- flag as NON_COMPLIANT;
+      (8) missing README.md at the repository root -- flag as NON_COMPLIANT.
     severity: LOW
 
   - policy_id: REPRO-6
@@ -148,3 +173,169 @@ policies:
       what one row represents. Flag NON_COMPLIANT only if these basics are
       missing on a table genuinely meant for reuse.
     severity: MEDIUM
+
+  - policy_id: ARCH-12
+    title: Medallion architecture (Bronze / Silver / Gold)
+    description: >
+      Data pipelines must follow the three-layer medallion architecture.
+      Bronze: raw ingested data, written once and never modified -- the
+      immutable source of truth. Silver: validated, cleansed, and
+      deduplicated data -- data quality checks (null counts, duplicates,
+      schema validation) must be applied before any write to this layer.
+      Gold: aggregated, business-ready data consumed by reporting, analytics,
+      or downstream teams. Data must flow strictly in order
+      (Bronze → Silver → Gold); no layer may be skipped. Bronze paths must
+      never be overwritten or deleted by transformation or load code.
+    applies_when: >
+      Any pipeline, notebook, or script that reads from or writes to a
+      data lake, Delta Lake, Azure Data Lake Storage, or any structured
+      multi-stage storage system (e.g. Databricks Unity Catalog, ADLS
+      Gen2 containers, local tiered folders). Not applicable to standalone
+      model training scripts or exploratory notebooks with no storage
+      layer references.
+    evaluation_hint: >
+      Check path strings, schema names, container names, and folder
+      references throughout the code for:
+      (1) Presence of three distinct layers -- look for names or paths
+      containing bronze/silver/gold, raw/cleansed/curated,
+      landing/refined/reporting, or equivalent tiered labels. Flag as
+      NON_COMPLIANT if all writes go to a single undifferentiated location
+      with no layer separation (e.g. writing final output directly to the
+      same folder as raw input);
+      (2) Layer ordering -- flag as NON_COMPLIANT if code reads from a
+      bronze/raw path and writes directly to gold/reporting without any
+      silver/cleansed intermediate step (layer skipping);
+      (3) Bronze immutability -- flag as NON_COMPLIANT if any
+      transformation, overwrite, or delete operation targets a bronze/raw
+      path (bronze writes should only come from ingestion code, never from
+      transform or load steps);
+      (4) Silver quality gate -- flag as NON_COMPLIANT if code writes to a
+      silver/cleansed path without data quality validation logic immediately
+      preceding the write (see DQ-1 for what counts as validation);
+      (5) Gold aggregation -- flag as NON_COMPLIANT if a gold/reporting
+      path receives raw, un-aggregated rows directly from bronze without
+      any grouping, aggregation, or enrichment step.
+      Return NOT_APPLICABLE if the code has no references to tiered storage
+      paths or schemas.
+    severity: HIGH
+
+  - policy_id: GIT-8
+    title: Git branching and commit standards
+    description: >
+      All repositories must follow the standard three-tier Git workflow.
+      Branches: master (always stable, production-ready), develop
+      (integration before release), user-story/{id} (feature work, where id
+      is the numeric DevOps user-story number). Commit messages must use
+      conventional prefixes (feat:, fix:, chore:, docs:, refactor:) and
+      each commit must be atomic -- one logical change per commit. Pull
+      requests must link to a user story, require at least one reviewer
+      before merging, and must have all conflicts resolved.
+    applies_when: >
+      Any repository with a .git directory, a CI/CD configuration file
+      (azure-pipelines.yml, .github/workflows/*.yml), or a PR/commit template.
+    evaluation_hint: >
+      Check for: (1) CI/CD YAML files referencing branches -- flag any
+      branch name that is not master, develop, or matching user-story/\d+
+      as NON_COMPLIANT (e.g. hotfix-thing, my-branch, test, feature/xyz
+      are violations); (2) a PR template or CONTRIBUTING.md -- if present,
+      check it enforces at least one reviewer and references a user story;
+      (3) any commit message samples or git log snippets -- flag messages
+      without a conventional prefix (feat:, fix:, chore:, docs:, refactor:)
+      or messages that bundle multiple unrelated changes in one commit;
+      (4) if a branch protection config file exists, check that master and
+      develop require reviews before merge. Flag NON_COMPLIANT for any
+      deviation from the three-tier branch model or missing review requirement.
+    severity: MEDIUM
+
+  - policy_id: REPO-9
+    title: Repository naming convention
+    description: >
+      Repository names must follow the pattern: {department}-{resource}-{project_name}.
+      Department is a 3-letter lowercase code: aud (audit), fin (finance),
+      gfp (gfpr), ops (operations), tax (tax). Resource is one of: code, sql,
+      synapse. Project name uses snake_case with underscores separating words.
+      Hyphens separate the three components. No uppercase, no spaces.
+      Examples: aud-code-cyber_security, ops-sql-market_rate,
+      fin-synapse-capital_structure.
+    applies_when: "Every repo -- evaluate the root directory or repository name."
+    evaluation_hint: >
+      Inspect the repository root folder name or the name field in any project
+      config (pyproject.toml, setup.cfg, package.json, azure-pipelines.yml).
+      Validate against the pattern:
+      ^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$
+      Flag NON_COMPLIANT if: (1) the department segment is not one of the five
+      allowed codes (e.g. "operations", "finance", "audit" in full are violations);
+      (2) the resource type is missing, wrong, or abbreviated differently;
+      (3) the project_name uses hyphens instead of underscores, contains
+      uppercase letters, or starts with a digit;
+      (4) the separators between the three segments are not single hyphens;
+      (5) the name is completely free-form with no recognisable structure
+      (e.g. "FinalProject", "market-analysis", "my_repo").
+    severity: MEDIUM
+
+  - policy_id: SQL-10
+    title: SQL table and object naming convention
+    description: >
+      SQL tables, views, and stored procedures must follow PascalCase naming.
+      No Hungarian notation prefixes are permitted (no tbl_, vw_, sp_).
+      Table structure: <Schema>.<ProjectName><DatasetName><AdditionalInfo>.
+      Data model tables must carry a Dim or Fact suffix
+      (e.g. Reporting.EthanolMarketRateFact). Stored procedures must contain
+      a verb and follow <Schema>.<ProjectName><Verb><DatasetName>
+      (e.g. Production.EthanolLoadMarketRate). Schemas must be PascalCase,
+      alphanumeric only, max 30 characters. Approved core schemas: Staging,
+      Production, MetaData, Logging, Config. Approved data model schemas:
+      Reporting, PowerBI, DataMart. A table must never share its name with
+      any of its columns.
+    applies_when: >
+      Any .sql file or Python/notebook code that contains SQL DDL (CREATE TABLE,
+      CREATE VIEW, CREATE PROCEDURE) or DML referencing named SQL objects.
+    evaluation_hint: >
+      Scan .sql files and SQL strings embedded in .py or .ipynb files for:
+      (1) table or view names not in PascalCase -- flag all-lowercase or
+      snake_case names (e.g. ethanol_market_rate, tbl_ethanol) as NON_COMPLIANT;
+      (2) any Hungarian notation prefix: tbl_, vw_, sp_, fn_, udf_ -- flag
+      as NON_COMPLIANT regardless of the rest of the name;
+      (3) data model tables (used in star-schema joins with dimension/fact
+      relationships) missing the Dim or Fact suffix -- flag as NON_COMPLIANT;
+      (4) stored procedures lacking a verb in their name, or using a forbidden
+      verb like Create or Creating -- flag as NON_COMPLIANT;
+      (5) schema names not in the approved list or that use underscores or
+      exceed 30 characters -- flag as NON_COMPLIANT;
+      (6) any table whose name exactly matches one of its own column names --
+      flag as NON_COMPLIANT.
+      Return NOT_APPLICABLE if no SQL object definitions are present.
+    severity: MEDIUM
+
+  - policy_id: SQL-11
+    title: SQL column naming convention
+    description: >
+      SQL table columns must be written in PascalCase and use singular names.
+      Date and time columns must be descriptive -- they must qualify what the
+      date represents (e.g. StartDate, CallEndDate, ProcessedDate) rather than
+      generic names like Date, Dt, or Timestamp. The suffix Key is reserved
+      exclusively for primary and foreign keys in data model (Dim/Fact) tables
+      (e.g. PipelineKey, CountryKey, CustomerKey). Using bare Id as the sole
+      primary key identifier should be avoided; prefer a qualified name
+      (CustomerId, PipelineId) or a Key-suffixed surrogate. No abbreviated or
+      cryptic column names (e.g. col1, val, num, dt, qty without context).
+    applies_when: >
+      Any .sql file containing CREATE TABLE or column definitions, or Python/
+      notebook code that defines DataFrame column names intended for a
+      persistent SQL table or data model.
+    evaluation_hint: >
+      Scan CREATE TABLE statements, ALTER TABLE ADD COLUMN, and any
+      DataFrame.columns / DataFrame.rename() assignments destined for SQL for:
+      (1) column names not in PascalCase in SQL contexts -- flag snake_case
+      column names (e.g. start_date, customer_id, pipeline_key) as NON_COMPLIANT;
+      (2) generic or cryptic names: Id (standalone), Dt, Col, Val, Num, Flag,
+      Qty, Amt without a qualifying prefix -- flag as NON_COMPLIANT;
+      (3) date/time columns named simply Date, Time, Timestamp, or CreatedAt
+      without a qualifying prefix describing the business event -- flag as
+      NON_COMPLIANT (OrderDate, InvoiceCreatedAt are compliant);
+      (4) the Key suffix appearing on non-key columns (e.g. StatusKey, NameKey)
+      -- flag as NON_COMPLIANT;
+      (5) plural column names (e.g. Orders, Products, Tags) -- flag as
+      NON_COMPLIANT.
+      Return NOT_APPLICABLE if no SQL column definitions are present.
+    severity: LOW

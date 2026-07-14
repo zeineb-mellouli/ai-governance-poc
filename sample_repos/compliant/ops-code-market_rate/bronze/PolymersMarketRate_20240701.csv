@@ -1,0 +1,6 @@
+product_key,market_date,price_usd,volume_tonnes,source_region
+POL001,2024-07-01,1250.00,450.0,Europe
+POL002,2024-07-01,1248.50,380.0,Asia
+POL003,2024-07-01,1255.00,520.0,Americas
+POL004,2024-07-01,1246.75,290.0,Middle East
+POL005,2024-07-01,1252.00,410.0,Europe
