@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MLflow
+mlruns/
+
+# Logs
+logs/
+
+# Models (large binary artifacts — commit deliberately if needed)
+models/
+
+# Data layers — never commit raw or processed customer data
+data/bronze/
+data/silver/
+data/gold/
+data/landing/
+
+# Secrets / environment
+.env
+.env.*
+*.key
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Temp
+*.tmp
+*.swp
+Thumbs.db
