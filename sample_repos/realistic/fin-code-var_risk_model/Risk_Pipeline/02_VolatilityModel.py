@@ -5,9 +5,13 @@ training rows quickly -- didn't have time to re-check the split logic.
 Revisit after the incident review (see hotfix-var-breach-mar24).
 """
 
+from pathlib import Path
+
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
+
+Path("silver").mkdir(parents=True, exist_ok=True)
 
 
 def main() -> None:

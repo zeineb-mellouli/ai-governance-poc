@@ -1,0 +1,601 @@
+{
+  "repo_name": "FinalProject",
+  "repo_path": "C:\\Users\\CHMELLOULIZ\\OneDrive - Tetra Pak\\Desktop\\ai-governance-poc\\sample_repos\\non_compliant\\FinalProject",
+  "run_timestamp": "2026-08-03T13:28:13.107347+00:00",
+  "findings": [
+    {
+      "policy_id": "REPO-9",
+      "title": "Repository naming convention",
+      "severity": "MEDIUM",
+      "file_path": null,
+      "status": "NON_COMPLIANT",
+      "confidence_score": 1.0,
+      "evidence": "Repo root name 'FinalProject' does not match ^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$",
+      "retrieval_chunk_id": "REPO-9",
+      "retrieval_score": 1.0,
+      "remediation": {
+        "description": "Rename the repository root to follow the required naming convention.",
+        "fix": "git branch -m FinalProject fin-code-finalproject"
+      },
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": null,
+      "status": "NON_COMPLIANT",
+      "confidence_score": 1.0,
+      "evidence": "No README.md found at the repository root.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 1.0,
+      "remediation": {
+        "description": "Add a repository-root README.md to satisfy the naming convention requirement.",
+        "fix": "printf '# Project Title\\n\\nRepository overview.\\n' > README.md"
+      },
+      "risk_score": 1.0
+    },
+    {
+      "policy_id": "ARCH-12",
+      "title": "Medallion architecture (Bronze / Silver / Gold)",
+      "severity": "HIGH",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "Reads from bronze and writes back to the same bronze file: `pd.read_csv(\"bronze/EthanolMarketRate_20240701.csv\")` and later `df.to_csv(\"bronze/EthanolMarketRate_20240701.csv\", index=False)`. Also skips silver and writes directly to `data/output final.csv`.",
+      "retrieval_chunk_id": "ARCH-12",
+      "retrieval_score": 0.032796,
+      "remediation": {
+        "description": "Move the processed output out of bronze into a silver staging file and then write the final reporting dataset to a gold/output path, leaving the bronze source immutable.",
+        "fix": "python - <<'PY'\nfrom pathlib import Path\np = Path('final_v2_ACTUAL.py')\ns = p.read_text()\ns = s.replace('df.to_csv(\"bronze/EthanolMarketRate_20240701.csv\", index=False)\\nprint(\"Saved back to bronze (overwrote raw source!)\")\\n\\n# ARCH-12 violation 2: no silver layer exists anywhere -- bronze jumps straight\\n# to a reporting dump with zero validation or aggregation in between\\ndf.to_csv(\"data/output final.csv\")\\nprint(\"\\\\nDone! Results saved to data/ (no gold layer, no silver layer).\")\\n', 'silver_path = \"silver/EthanolMarketRate_20240701_silver.csv\"\\ndf.to_csv(silver_path, index=False)\\nprint(f\"Saved processed data to silver: {silver_path}\")\\n\\n# Gold layer / reporting output\\ngold_path = \"gold/output_final.csv\"\\ndf.to_csv(gold_path, index=False)\\nprint(f\"\\\\nDone! Results saved to gold: {gold_path}\")\\n')\np.write_text(s)\nPY"
+      },
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.95,
+      "evidence": "Data is loaded and used with no validation checks before processing; the file explicitly says `# No quality checks before processing` and then computes aggregates/model training without asserts, filters, or expectation checks.",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.031778,
+      "remediation": {
+        "description": "Add basic data quality validation before any aggregation or model training, including required-column, null, and numeric checks with row filtering or failure on invalid data.",
+        "fix": "import pandas as pd\nimport numpy as np\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import train_test_split\n\n# ARCH-12 violation 1: reads from bronze (good), but will write output\n# back into the same bronze folder (overwrites immutable source layer)\ndf = pd.read_csv(\"bronze/EthanolMarketRate_20240701.csv\")\nprint(\"Data loaded:\")\nprint(df)\nprint(\"Shape:\", df.shape)\n\n# Also load customer data for enrichment\ncustomers = pd.read_csv(\"data/customers.csv\")\nprint(\"\\nCustomer list:\")\nprint(customers)\n\n# Connect to database - password hardcoded directly in script\nconnection_string = \"mssql+pyodbc://admin:Tetra@dmin123!@prod-db.database.windows.net/DataWarehouse?driver=ODBC+Driver+17+for+SQL+Server\"\napi_key = \"prod-key-placeholder\"\n\n# Data quality checks before processing\nrequired_cols = [\"id\", \"vol\", \"val\"]\nmissing_cols = [c for c in required_cols if c not in df.columns]\nif missing_cols:\n    raise ValueError(f\"Missing required columns: {missing_cols}\")\n\ndf = df.dropna(subset=required_cols).copy()\ndf = df[pd.to_numeric(df[\"id\"], errors=\"coerce\").notna()]\ndf = df[pd.to_numeric(df[\"vol\"], errors=\"coerce\").notna()]\ndf = df[pd.to_numeric(df[\"val\"], errors=\"coerce\").notna()]\ndf[[\"id\", \"vol\", \"val\"]] = df[[\"id\", \"vol\", \"val\"]].apply(pd.to_numeric)\nif df.empty:\n    raise ValueError(\"No valid rows remain after data quality checks\")\n\navg_price = df[\"val\"].mean()\nprint(\"\\nAverage price:\", avg_price)\n\ntotal_vol = df[\"vol\"].sum()\nprint(\"Total volume:\", total_vol)\n\n# Train a model - no random_state set anywhere (REPRO-6 violation)\nX = df[[\"id\", \"vol\"]].values\ny = df[\"val\"].values\n\nX_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)\n\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)\nprint(\"\\nModel trained\")\nprint(\"Score:\", model.score(X_test, y_test))\n\ndf[\"predicted_val\"] = model.predict(X)\n\n# ARCH-12 violation 1: writing processed output BACK to bronze (must be immutable)\ndf.to_csv(\"bronze/EthanolMarketRate_20240701.csv\", index=False)\nprint(\"Saved back to bronze (overwrote raw source!)\")\n\n# ARCH-12 violation 2: no silver layer exists anywhere -- bronze jumps straight\n# to a reporting dump with zero validation or aggregation in between\ndf.to_csv(\"data/output final.csv\", index=False)\nprint(\"\\nDone! Results saved to data/ (no gold layer, no silver layer).\")"
+      },
+      "risk_score": 2.85
+    },
+    {
+      "policy_id": "SEC-3",
+      "title": "No hardcoded secrets or credentials",
+      "severity": "HIGH",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "Hardcoded credentials appear directly in code: `connection_string = \"mssql+pyodbc://admin:Tetra@dmin123!@prod-db.database.windows.net/DataWarehouse?...\"` and `api_key = \"sk-prod-xK92mNpL4rTvQw8jYeB3fHdA6cUoZiG5\"`.",
+      "retrieval_chunk_id": "SEC-3",
+      "retrieval_score": 0.03055,
+      "remediation": {
+        "description": "Remove the hardcoded database credentials and API key from the script and read them from environment variables instead.",
+        "fix": "python - <<'PY'\nfrom pathlib import Path\np = Path('final_v2_ACTUAL.py')\ns = p.read_text()\ns = s.replace('connection_string = \"mssql+pyodbc://admin:Tetra@dmin123!@prod-db.database.windows.net/DataWarehouse?driver=ODBC+Driver+17+for+SQL+Server\"\\napi_key = \"sk-prod-xK92mNpL4rTvQw8jYeB3fHdA6cUoZiG5\"', 'import os\\nconnection_string = os.environ[\"DB_CONNECTION_STRING\"]\\napi_key = os.environ[\"API_KEY\"]')\np.write_text(s)\nPY"
+      },
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "PII-4",
+      "title": "No raw PII exposed in outputs",
+      "severity": "HIGH",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.86,
+      "evidence": "Prints full dataframes to output, including `print(df)` and `print(customers)`, which can expose raw identifier-like values from the loaded data.",
+      "retrieval_chunk_id": "PII-4",
+      "retrieval_score": 0.030331,
+      "remediation": {
+        "description": "Remove raw dataframe/customer prints and replace them with non-PII summaries only.",
+        "fix": "python - <<'PY'\nfrom pathlib import Path\np = Path('final_v2_ACTUAL.py')\ns = p.read_text()\ns = s.replace('print(df)\\n', 'print(df.head())\\n')\ns = s.replace('print(customers)\\n', 'print(customers.head())\\n')\np.write_text(s)\nPY"
+      },
+      "risk_score": 2.58
+    },
+    {
+      "policy_id": "REPRO-6",
+      "title": "Reproducibility",
+      "severity": "MEDIUM",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "Uses stochastic training split with no seed: `train_test_split(X, y)  # no random_state!`; also overwrites the raw source file with `df.to_csv(\"bronze/EthanolMarketRate_20240701.csv\", index=False)`.",
+      "retrieval_chunk_id": "REPRO-6",
+      "retrieval_score": 0.029857,
+      "remediation": {
+        "description": "Make the train/test split deterministic by setting a fixed random_state and stop overwriting the bronze source file by writing the processed output to a separate silver/gold path instead.",
+        "fix": "python - <<'PY'\nfrom pathlib import Path\np = Path('final_v2_ACTUAL.py')\ns = p.read_text()\ns = s.replace('X_train, X_test, y_train, y_test = train_test_split(X, y)  # no random_state!', 'X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)')\ns = s.replace('df.to_csv(\"bronze/EthanolMarketRate_20240701.csv\", index=False)\\nprint(\"Saved back to bronze (overwrote raw source!)\")', 'df.to_csv(\"silver/EthanolMarketRate_20240701_processed.csv\", index=False)\\nprint(\"Saved processed output to silver layer\")')\np.write_text(s)\nPY"
+      },
+      "risk_score": 1.96
+    },
+    {
+      "policy_id": "OPS-2",
+      "title": "Logging and monitoring",
+      "severity": "MEDIUM",
+      "file_path": "final_v2_ACTUAL.py",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.93,
+      "evidence": "Relies on `print()` statements for run progress and results, e.g. `print(\"Data loaded:\")`, `print(\"Model trained\")`, `print(\"Done! Results saved...\")`, with no logging module or persistent metrics.",
+      "retrieval_chunk_id": "OPS-2",
+      "retrieval_score": 0.029418,
+      "remediation": {
+        "description": "Replace ad hoc print-based progress output with the logging module so run status and results are emitted through persistent logs.",
+        "fix": "python - <<'PY'\nfrom pathlib import Path\np = Path('final_v2_ACTUAL.py')\ns = p.read_text()\ns = 'import logging\\n' + s\ns = s.replace('import pandas as pd\\n', 'import pandas as pd\\n')\ns = s.replace('from sklearn.model_selection import train_test_split\\n\\n', 'from sklearn.model_selection import train_test_split\\n\\nlogging.basicConfig(level=logging.INFO, format=\"%(asctime)s %(levelname)s %(message)s\")\\nlogger = logging.getLogger(__name__)\\n\\n')\nrepls = {\n'print(\"Data loaded:\")':'logger.info(\"Data loaded:\")',\n'print(df)':'logger.info(\"%s\", df)',\n'print(\"Shape:\", df.shape)':'logger.info(\"Shape: %s\", df.shape)',\n'print(\"\\\\nCustomer list:\")':'logger.info(\"Customer list:\")',\n'print(customers)':'logger.info(\"%s\", customers)',\n'print(\"\\\\nAverage price:\", avg_price)':'logger.info(\"Average price: %s\", avg_price)',\n'print(\"Total volume:\", total_vol)':'logger.info(\"Total volume: %s\", total_vol)',\n'print(\"\\\\nModel trained\")':'logger.info(\"Model trained\")',\n'print(\"Score:\", model.score(X_test, y_test))':'logger.info(\"Score: %s\", model.score(X_test, y_test))',\n'print(\"Saved back to bronze (overwrote raw source!)\")':'logger.info(\"Saved back to bronze (overwrote raw source!)\")',\n'print(\"\\\\nDone! Results saved to data/ (no gold layer, no silver layer).\")':'logger.info(\"Done! Results saved to data/ (no gold layer, no silver layer).\")',\n}\nfor a,b in repls.items():\n    s = s.replace(a,b)\np.write_text(s)\nPY"
+      },
+      "risk_score": 1.86
+    },
+    {
+      "policy_id": "GIT-8",
+      "title": "Git branching and commit standards",
+      "severity": "MEDIUM",
+      "file_path": "pipeline.yml",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "CI/CD YAML trigger includes non-approved branch names: \"my-analysis-branch\" and \"hotfix\"; policy allows only master, develop, or user-story/\\d+.",
+      "retrieval_chunk_id": "GIT-8",
+      "retrieval_score": 0.031099,
+      "remediation": {
+        "description": "Restrict the pipeline trigger to approved branches only by replacing the non-compliant branch names with allowed patterns.",
+        "fix": "cat > pipeline.yml <<'YAML'\ntrigger:\n  branches:\n    include:\n      - master\n      - develop\n      - user-story/*\n\npool:\n  vmImage: ubuntu-latest\n\nsteps:\n  - script: pip install -r requirements.txt\n    displayName: Install deps\n  - script: python final_v2_ACTUAL.py\n    displayName: Run analysis\nYAML"
+      },
+      "risk_score": 1.98
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "pipeline.yml",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "File path is \"pipeline.yml\"; pipeline file names must be CamelCase, and \"pipeline\" is also a vague name pattern not allowed.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.031498,
+      "remediation": {
+        "description": "Rename the pipeline file to a CamelCase, non-vague name to satisfy the naming convention.",
+        "fix": "git mv pipeline.yml AnalysisPipeline.yml"
+      },
+      "risk_score": 0.98
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "requirements.txt",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.99,
+      "evidence": "requirements.txt is a documentation/dependency file with no executable data loading or validation code.",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.032292,
+      "remediation": null,
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "requirements.txt",
+      "status": "COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "requirements.txt is explicitly exempt from CamelCase naming checks under this policy.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.031498,
+      "remediation": null,
+      "risk_score": 0.98
+    },
+    {
+      "policy_id": "REPRO-6",
+      "title": "Reproducibility",
+      "severity": "MEDIUM",
+      "file_path": "requirements.txt",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.91,
+      "evidence": "requirements.txt lists unpinned dependencies with no versions, e.g. 'pandas', 'sqlalchemy', 'numpy', 'jupyter', 'sklearn'.",
+      "retrieval_chunk_id": "REPRO-6",
+      "retrieval_score": 0.03009,
+      "remediation": {
+        "description": "Pin all Python dependencies in requirements.txt to specific versions to make installs reproducible.",
+        "fix": "cat > requirements.txt <<'EOF'\npandas==2.2.2\nsqlalchemy==2.0.32\nnumpy==2.0.1\njupyter==1.1.1\nscikit-learn==1.5.1\nEOF"
+      },
+      "risk_score": 1.82
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "Untitled.ipynb",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "Data is loaded and used with no validation checks: `pd.read_csv('data/customers.csv')`, `pd.read_csv('data/ethanol market rate.csv')`, then `nlargest(...)` and `mean()` with no assert/raise/filter or validation call anywhere in the notebook.",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.032292,
+      "remediation": {
+        "description": "Add basic data validation checks after loading each CSV so the notebook asserts required columns and non-empty data before using the values.",
+        "fix": "python - <<'PY'\nimport json\nfrom pathlib import Path\np = Path('Untitled.ipynb')\nnb = json.loads(p.read_text())\nnb['cells'][0]['source'] = [\n\"import pandas as pd\\n\",\n\"\\n\",\n\"customers = pd.read_csv('data/customers.csv')\\n\",\n\"required_customer_cols = {'name', 'salary', 'email'}\\n\",\n\"assert not customers.empty, 'customers.csv is empty'\\n\",\n\"assert required_customer_cols.issubset(customers.columns), f'missing columns: {required_customer_cols - set(customers.columns)}'\\n\",\n\"assert customers['salary'].notna().all(), 'salary contains missing values'\\n\",\n\"print('Customer data:')\\n\",\n\"print(customers)\\n\"\n]\nnb['cells'][1]['source'] = [\n\"top = customers.nlargest(3, 'salary')[['name', 'salary', 'email']]\\n\",\n\"print('Top earners by salary:')\\n\",\n\"print(top)\\n\",\n\"print('\\\\nAverage salary:', customers['salary'].mean())\\n\"\n]\nnb['cells'][2]['source'] = [\n\"market = pd.read_csv('data/ethanol market rate.csv')\\n\",\n\"assert not market.empty, 'ethanol market rate.csv is empty'\\n\",\n\"print('Market data loaded')\\n\",\n\"print(market.head(2))\\n\"\n]\np.write_text(json.dumps(nb, indent=1))\nPY"
+      },
+      "risk_score": 2.94
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "Untitled.ipynb",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.97,
+      "evidence": "File path is `Untitled.ipynb`, which matches the vague name rule (`Untitled` is explicitly listed as NON_COMPLIANT). Also the CSV path `data/ethanol market rate.csv` contains spaces.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.032292,
+      "remediation": {
+        "description": "Rename the notebook to a descriptive filename and update the CSV reference to a no-spaces path.",
+        "fix": "mv Untitled.ipynb customer_salary_analysis.ipynb && mv 'data/ethanol market rate.csv' data/ethanol_market_rate.csv && python - <<'PY'\nfrom pathlib import Path\np = Path('customer_salary_analysis.ipynb')\ntext = p.read_text()\ntext = text.replace(\"data/ethanol market rate.csv\", \"data/ethanol_market_rate.csv\")\np.write_text(text)\nPY"
+      },
+      "risk_score": 0.97
+    },
+    {
+      "policy_id": "PII-4",
+      "title": "No raw PII exposed in outputs",
+      "severity": "HIGH",
+      "file_path": "Untitled.ipynb",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.95,
+      "evidence": "Notebook prints a dataframe containing identifier-like columns: `print(top)` after selecting `['name', 'salary', 'email']`, which would expose raw values in saved output or execution results.",
+      "retrieval_chunk_id": "PII-4",
+      "retrieval_score": 0.032002,
+      "remediation": {
+        "description": "Remove raw PII from notebook outputs by masking or dropping identifier columns before printing the top earners dataframe.",
+        "fix": "top = customers.nlargest(3, 'salary')[['name', 'salary', 'email']].copy()\ntop['name'] = '[REDACTED]'\ntop['email'] = '[REDACTED]'\nprint('Top earners by salary:')\nprint(top)\nprint('\\nAverage salary:', customers['salary'].mean())"
+      },
+      "risk_score": 2.85
+    },
+    {
+      "policy_id": "OPS-2",
+      "title": "Logging and monitoring",
+      "severity": "MEDIUM",
+      "file_path": "Untitled.ipynb",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.91,
+      "evidence": "The notebook relies on `print()` statements only (`print('Customer data:')`, `print(top)`, `print('Market data loaded')`) and contains no logging module usage or persistent run/error logging.",
+      "retrieval_chunk_id": "OPS-2",
+      "retrieval_score": 0.030679,
+      "remediation": {
+        "description": "Replace ad hoc print statements with persistent logging so notebook output is recorded via the logging module.",
+        "fix": "python - <<'PY'\nimport nbformat\nfrom pathlib import Path\n\npath = Path('Untitled.ipynb')\nnb = nbformat.read(path, as_version=4)\n\nnb.cells[0].source = \"\"\"import pandas as pd\nimport logging\n\nlogging.basicConfig(filename='notebook.log', level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')\n\ncustomers = pd.read_csv('data/customers.csv')\nlogging.info('Customer data loaded')\nlogging.info('\\n%s', customers.to_string(index=False))\"\"\"\n\nnb.cells[1].source = \"\"\"top = customers.nlargest(3, 'salary')[['name', 'salary', 'email']]\nlogging.info('Top earners by salary:\\n%s', top.to_string(index=False))\nlogging.info('Average salary: %s', customers['salary'].mean())\"\"\"\n\nnb.cells[2].source = \"\"\"market = pd.read_csv('data/ethanol market rate.csv')\nlogging.info('Market data loaded')\nlogging.info('\\n%s', market.head(2).to_string(index=False))\"\"\"\n\nnbformat.write(nb, path)\nPY"
+      },
+      "risk_score": 1.82
+    },
+    {
+      "policy_id": "REPRO-6",
+      "title": "Reproducibility",
+      "severity": "MEDIUM",
+      "file_path": "Untitled.ipynb",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.86,
+      "evidence": "The notebook has no stochastic operations, random sampling, or model training; it only reads CSVs and computes simple aggregations.",
+      "retrieval_chunk_id": "REPRO-6",
+      "retrieval_score": 0.03031,
+      "remediation": null,
+      "risk_score": 1.72
+    },
+    {
+      "policy_id": "ARCH-12",
+      "title": "Medallion architecture (Bronze / Silver / Gold)",
+      "severity": "HIGH",
+      "file_path": "Untitled.ipynb",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.84,
+      "evidence": "No tiered storage paths or medallion layer references such as bronze/silver/gold, raw/cleansed/curated, or landing/refined/reporting appear in the notebook.",
+      "retrieval_chunk_id": "ARCH-12",
+      "retrieval_score": 0.030077,
+      "remediation": null,
+      "risk_score": 2.52
+    },
+    {
+      "policy_id": "ARCH-12",
+      "title": "Medallion architecture (Bronze / Silver / Gold)",
+      "severity": "HIGH",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "File is in a bronze layer path and contains only a CSV header row: \"dt,id,val,vol\"; no writes, transformations, or layer-skipping logic are present.",
+      "retrieval_chunk_id": "ARCH-12",
+      "retrieval_score": 0.032796,
+      "remediation": null,
+      "risk_score": 2.94
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "Path/name follows the exempt medallion folder convention: \"bronze/EthanolMarketRate_20240701.csv\". The file name is CamelCase with an underscore date suffix pattern, and the CSV headers are simple lowercase columns in a data file.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.032051,
+      "remediation": null,
+      "risk_score": 0.99
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "This is a raw CSV data file with no executable code; it only contains the header row \"dt,id,val,vol\".",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.032018,
+      "remediation": null,
+      "risk_score": 3.0
+    },
+    {
+      "policy_id": "REPRO-6",
+      "title": "Reproducibility",
+      "severity": "MEDIUM",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "This CSV file contains no stochastic operations, code, or processing logic.",
+      "retrieval_chunk_id": "REPRO-6",
+      "retrieval_score": 0.029857,
+      "remediation": null,
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "SQL-11",
+      "title": "SQL column naming convention",
+      "severity": "LOW",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "No SQL object definitions or SQL column definitions are present.",
+      "retrieval_chunk_id": "SQL-11",
+      "retrieval_score": 0.029958,
+      "remediation": null,
+      "risk_score": 1.0
+    },
+    {
+      "policy_id": "SQL-10",
+      "title": "SQL table and object naming convention",
+      "severity": "MEDIUM",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "No SQL code or SQL object definitions are present.",
+      "retrieval_chunk_id": "SQL-10",
+      "retrieval_score": 0.030679,
+      "remediation": null,
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "DM-7",
+      "title": "Star schema / shared output table design",
+      "severity": "MEDIUM",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "The file is a raw CSV data file and does not define a reusable output table.",
+      "retrieval_chunk_id": "DM-7",
+      "retrieval_score": 0.030077,
+      "remediation": null,
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "PII-4",
+      "title": "No raw PII exposed in outputs",
+      "severity": "HIGH",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "This is a raw CSV data file with no notebook outputs or print/log statements.",
+      "retrieval_chunk_id": "PII-4",
+      "retrieval_score": 0.03101,
+      "remediation": null,
+      "risk_score": 3.0
+    },
+    {
+      "policy_id": "SEC-3",
+      "title": "No hardcoded secrets or credentials",
+      "severity": "HIGH",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "No code or credential-like strings are present in this CSV data file.",
+      "retrieval_chunk_id": "SEC-3",
+      "retrieval_score": 0.030366,
+      "remediation": null,
+      "risk_score": 3.0
+    },
+    {
+      "policy_id": "OPS-2",
+      "title": "Logging and monitoring",
+      "severity": "MEDIUM",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "This is not a pipeline job or Python module; it is a CSV data file.",
+      "retrieval_chunk_id": "OPS-2",
+      "retrieval_score": 0.030415,
+      "remediation": null,
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "GIT-8",
+      "title": "Git branching and commit standards",
+      "severity": "MEDIUM",
+      "file_path": "bronze/EthanolMarketRate_20240701.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 1.0,
+      "evidence": "This file is not a CI/CD YAML, PR template, or contribution guide.",
+      "retrieval_chunk_id": "GIT-8",
+      "retrieval_score": 0.02879,
+      "remediation": null,
+      "risk_score": 2.0
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "data/customers.csv",
+      "status": "COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "File path is `data/customers.csv`; the naming policy applies to file names, and CSV data files are exempt from CamelCase checks only for specific listed files. No vague name or folder violation is present in the file content.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.032292,
+      "remediation": null,
+      "risk_score": 0.99
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "data/customers.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.99,
+      "evidence": "This is a raw CSV data file containing only headers (`name,email,phone,salary`) and no executable code or validation logic.",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.031818,
+      "remediation": null,
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "ARCH-12",
+      "title": "Medallion architecture (Bronze / Silver / Gold)",
+      "severity": "HIGH",
+      "file_path": "data/customers.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.99,
+      "evidence": "No tiered storage paths or medallion layer references (bronze/silver/gold, raw/cleansed/curated, etc.) appear in the file.",
+      "retrieval_chunk_id": "ARCH-12",
+      "retrieval_score": 0.030798,
+      "remediation": null,
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "REPRO-6",
+      "title": "Reproducibility",
+      "severity": "MEDIUM",
+      "file_path": "data/customers.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.99,
+      "evidence": "The file is a raw CSV data file and contains no stochastic operations, seeds, or processing code.",
+      "retrieval_chunk_id": "REPRO-6",
+      "retrieval_score": 0.03009,
+      "remediation": null,
+      "risk_score": 1.98
+    },
+    {
+      "policy_id": "DQ-1",
+      "title": "Data quality validation present",
+      "severity": "HIGH",
+      "file_path": "data/ethanol market rate.csv",
+      "status": "NOT_APPLICABLE",
+      "confidence_score": 0.99,
+      "evidence": "Raw CSV data file with no executable code; content is only the header row 'dt,id,val,vol'.",
+      "retrieval_chunk_id": "DQ-1",
+      "retrieval_score": 0.03254,
+      "remediation": null,
+      "risk_score": 2.97
+    },
+    {
+      "policy_id": "NAM-5",
+      "title": "File and folder naming convention",
+      "severity": "LOW",
+      "file_path": "data/ethanol market rate.csv",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.98,
+      "evidence": "File name 'ethanol market rate.csv' contains spaces and is not CamelCase.",
+      "retrieval_chunk_id": "NAM-5",
+      "retrieval_score": 0.032292,
+      "remediation": {
+        "description": "Rename the CSV file to CamelCase without spaces to comply with the naming convention.",
+        "fix": "mv \"data/ethanol market rate.csv\" data/EthanolMarketRate.csv"
+      },
+      "risk_score": 0.98
+    },
+    {
+      "policy_id": "SQL-11",
+      "title": "SQL column naming convention",
+      "severity": "LOW",
+      "file_path": "data/ethanol market rate.csv",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.97,
+      "evidence": "CSV headers include generic/cryptic names 'dt', 'id', 'val', and 'vol', which violate the column naming guidance.",
+      "retrieval_chunk_id": "SQL-11",
+      "retrieval_score": 0.030214,
+      "remediation": {
+        "description": "Rename the CSV headers to descriptive column names instead of generic abbreviations.",
+        "fix": "printf 'date,market_id,value,volume\\n' > data/ethanol\\ market\\ rate.csv"
+      },
+      "risk_score": 0.97
+    },
+    {
+      "policy_id": "SQL-10",
+      "title": "SQL table and object naming convention",
+      "severity": "MEDIUM",
+      "file_path": "sql/create_tables.sql",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "CREATE TABLE tbl_ethanol_market_rate, CREATE TABLE tbl_customers, and CREATE PROCEDURE sp_GetData use forbidden prefixes tbl_ and sp_; table names are also snake_case rather than PascalCase.",
+      "retrieval_chunk_id": "SQL-10",
+      "retrieval_score": 0.033333,
+      "remediation": {
+        "description": "Rename the tables and procedure to remove forbidden prefixes and use PascalCase object names.",
+        "fix": "CREATE TABLE EthanolMarketRate (\n    id       INT          PRIMARY KEY,\n    dt       DATE,\n    val      DECIMAL(10,2),\n    vol      DECIMAL(12,2)\n);\n\nCREATE TABLE Customers (\n    id       INT          PRIMARY KEY,\n    name     VARCHAR(100),\n    email    VARCHAR(200),\n    phone    VARCHAR(20),\n    salary   DECIMAL(10,2)\n);\n\nCREATE PROCEDURE GetData\nAS\nBEGIN\n    SELECT\n        m.id,\n        m.dt,\n        m.val,\n        m.vol,\n        c.name,\n        c.email,\n        c.salary\n    FROM EthanolMarketRate m\n    JOIN Customers c ON m.id = c.id;\nEND;"
+      },
+      "risk_score": 1.98
+    },
+    {
+      "policy_id": "SQL-11",
+      "title": "SQL column naming convention",
+      "severity": "LOW",
+      "file_path": "sql/create_tables.sql",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.99,
+      "evidence": "Column names include generic/cryptic and non-PascalCase identifiers such as id, dt, val, vol, name, email, phone, and salary.",
+      "retrieval_chunk_id": "SQL-11",
+      "retrieval_score": 0.032522,
+      "remediation": {
+        "description": "Rename the tables and columns in `sql/create_tables.sql` to use clear PascalCase identifiers instead of generic/cryptic names, and update the procedure to reference the new names.",
+        "fix": "CREATE TABLE EthanolMarketRate (\n    MarketRateId INT PRIMARY KEY,\n    RateDate     DATE,\n    RateValue    DECIMAL(10,2),\n    Volume       DECIMAL(12,2)\n);\n\nCREATE TABLE Customers (\n    CustomerId INT PRIMARY KEY,\n    FullName    VARCHAR(100),\n    EmailAddress VARCHAR(200),\n    PhoneNumber VARCHAR(20),\n    AnnualSalary DECIMAL(10,2)\n);\n\nCREATE PROCEDURE GetData\nAS\nBEGIN\n    SELECT\n        m.MarketRateId,\n        m.RateDate,\n        m.RateValue,\n        m.Volume,\n        c.FullName,\n        c.EmailAddress,\n        c.AnnualSalary\n    FROM EthanolMarketRate m\n    JOIN Customers c ON m.MarketRateId = c.CustomerId;\nEND;"
+      },
+      "risk_score": 0.99
+    },
+    {
+      "policy_id": "DM-7",
+      "title": "Star schema / shared output table design",
+      "severity": "MEDIUM",
+      "file_path": "sql/create_tables.sql",
+      "status": "NON_COMPLIANT",
+      "confidence_score": 0.86,
+      "evidence": "The procedure joins two tables with no documented grain or primary key description: SELECT ... FROM tbl_ethanol_market_rate m JOIN tbl_customers c ON m.id = c.id;",
+      "retrieval_chunk_id": "DM-7",
+      "retrieval_score": 0.032266,
+      "remediation": {
+        "description": "Document the shared grain by making the join key explicit and adding primary key comments for both tables/procedure output.",
+        "fix": "-- market rate table: grain = one row per market_rate.id\nCREATE TABLE tbl_ethanol_market_rate (\n    id       INT          PRIMARY KEY,\n    dt       DATE,\n    val      DECIMAL(10,2),\n    vol      DECIMAL(12,2)\n);\n\n-- customer table: grain = one row per customer.id\nCREATE TABLE tbl_customers (\n    id       INT          PRIMARY KEY,\n    name     VARCHAR(100),\n    email    VARCHAR(200),\n    phone    VARCHAR(20),\n    salary   DECIMAL(10,2)\n);\n\n-- stored procedure output grain: one row per shared id\nCREATE PROCEDURE sp_GetData\nAS\nBEGIN\n    SELECT\n        m.id,\n        m.dt,\n        m.val,\n        m.vol,\n        c.name,\n        c.email,\n        c.salary\n    FROM tbl_ethanol_market_rate m\n    INNER JOIN tbl_customers c\n        ON m.id = c.id;\nEND;"
+      },
+      "risk_score": 1.72
+    }
+  ],
+  "errors": [],
+  "summary": {
+    "total_findings": 40,
+    "by_status": {
+      "NON_COMPLIANT": 20,
+      "NOT_APPLICABLE": 16,
+      "COMPLIANT": 4
+    },
+    "non_compliant_by_severity": {
+      "MEDIUM": 8,
+      "LOW": 6,
+      "HIGH": 6
+    }
+  }
+}

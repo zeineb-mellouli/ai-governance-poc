@@ -1,9 +1,12 @@
 """Build the quarterly FX exposure report for the Treasury board pack."""
 
 import logging
+from pathlib import Path
 
 import pandas as pd
 
+Path("logs").mkdir(parents=True, exist_ok=True)
+Path("gold").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/report.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 

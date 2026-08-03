@@ -1,9 +1,11 @@
 """Silver: data quality gate before anything reaches gold."""
 
 import logging
+from pathlib import Path
 
 import pandas as pd
 
+Path("logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/validate.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 

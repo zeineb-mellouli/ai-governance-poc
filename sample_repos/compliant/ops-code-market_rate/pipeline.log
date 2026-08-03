@@ -1,0 +1,18 @@
+2026-08-03 14:52:21,062  INFO      __main__  [BRONZE → SILVER] Ingestion job starting — bronze: bronze  silver: silver
+2026-08-03 14:52:21,063  INFO      __main__  Ingesting file: bronze\EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,073  INFO      __main__  Loaded 7 rows from bronze\EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,120  INFO      __main__  Schema and quality validation passed for bronze\EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,126  INFO      __main__  Validated file written: silver\EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,127  INFO      __main__  Ingesting file: bronze\PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,130  INFO      __main__  Loaded 5 rows from bronze\PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,144  INFO      __main__  Schema and quality validation passed for bronze\PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,148  INFO      __main__  Validated file written: silver\PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:21,148  INFO      __main__  [BRONZE → SILVER] Ingestion job complete — 2 files written to silver
+2026-08-03 14:52:33,451  INFO      __main__  [SILVER → GOLD] Transform job starting — silver: silver  gold: gold
+2026-08-03 14:52:33,459  INFO      __main__  Transforming 7 rows from EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:33,466  INFO      __main__  Transform complete — 7 rows ready for load
+2026-08-03 14:52:33,473  INFO      __main__  Transformed file written: gold\EthanolMarketRate_2024-07-01.csv
+2026-08-03 14:52:33,476  INFO      __main__  Transforming 5 rows from PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:33,479  INFO      __main__  Transform complete — 5 rows ready for load
+2026-08-03 14:52:33,482  INFO      __main__  Transformed file written: gold\PolymersMarketRate_2024-07-01.csv
+2026-08-03 14:52:33,483  INFO      __main__  [SILVER → GOLD] Transform job complete

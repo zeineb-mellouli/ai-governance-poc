@@ -1,0 +1,4 @@
+bank_account_id,currency,balance_amount,as_of_date
+ACC-1001,EUR,4520000.0,2024-07-01
+ACC-1002,USD,1875000.5,2024-07-01
+ACC-1003,GBP,932000.0,2024-07-01

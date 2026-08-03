@@ -1,0 +1,5 @@
+application_id,annual_income,existing_debt,credit_history_months,defaulted
+APP-5001,68000,12000,48,0
+APP-5002,41000,22000,12,1
+APP-5003,95000,8000,96,0
+APP-5004,33000,19000,6,1

@@ -1,9 +1,12 @@
 """Bronze -> Silver: ingest raw collateral positions, do not mutate bronze."""
 
 import logging
+from pathlib import Path
 
 import pandas as pd
 
+Path("logs").mkdir(parents=True, exist_ok=True)
+Path("silver").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/ingest.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 

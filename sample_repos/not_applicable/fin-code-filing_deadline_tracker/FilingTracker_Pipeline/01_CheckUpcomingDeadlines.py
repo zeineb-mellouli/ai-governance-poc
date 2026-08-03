@@ -2,9 +2,11 @@
 
 import logging
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 
+Path("logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/deadline_check.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 

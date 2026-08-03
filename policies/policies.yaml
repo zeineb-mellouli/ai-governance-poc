@@ -37,10 +37,19 @@ policies:
       raise / filter) validating null counts, duplicate counts, value
       ranges, or train/test leakage. If data is loaded and used with no
       such checks anywhere in the file, flag NON_COMPLIANT.
-      If the file is a raw data file (CSV, Parquet, JSON data, or similar)
-      containing no executable code, return NOT_APPLICABLE -- data quality
-      validation is the responsibility of the code that consumes the file,
-      not the file itself.
+      Return NOT_APPLICABLE (do not flag) when the file is any of the
+      following: (1) a raw data file (CSV, Parquet, JSON data, or similar)
+      containing no executable code -- data quality validation is the
+      responsibility of the code that consumes it, not the file itself;
+      (2) a SQL DDL file whose content is exclusively schema definitions
+      (CREATE TABLE, CREATE VIEW, CREATE INDEX, ALTER TABLE, DROP TABLE)
+      with no data loading or INSERT/SELECT statements -- DDL defines
+      structure, it does not load or consume data;
+      (3) a markdown or documentation file (README.md, .md, .rst, .txt)
+      -- documentation files contain no executable data loading code;
+      (4) an empty or near-empty Python package marker file (__init__.py
+      with no substantive code body) -- package markers are not data
+      processing modules.
     severity: HIGH
 
   - policy_id: OPS-2
@@ -62,6 +71,11 @@ policies:
       event log) rather than only printed to screen. Flag NON_COMPLIANT if
       the file relies only on print() with no persistent record and no
       error-path logging.
+      Return NOT_APPLICABLE for the following file types -- they are not
+      pipeline jobs and are not expected to use the logging module:
+      test files (any file whose name starts with test_ or ends with
+      _test.py), pytest configuration files (conftest.py), Python package
+      marker files (__init__.py), and markdown/documentation files.
     severity: MEDIUM
 
   - policy_id: SEC-3
@@ -78,6 +92,14 @@ policies:
       a secrets manager reference is compliant. A literal credential value
       assigned directly in code is NON_COMPLIANT regardless of repo
       visibility.
+      Return NOT_APPLICABLE for template and example environment files
+      (.env.example, .env.template, .env.sample, or any file whose name
+      signals it is a template): placeholder syntax such as <PLACEHOLDER>,
+      <secret-never-commit>, your-value-here, REPLACE_ME, or an empty
+      assignment (KEY=) documents what secrets are required without
+      embedding actual values -- these are compliant by design and must
+      not be flagged. Only flag a real, non-placeholder credential value
+      that could actually authenticate a system.
     severity: HIGH
 
   - policy_id: PII-4
@@ -97,6 +119,10 @@ policies:
       or clearing notebook outputs before commit is compliant. Flag
       NON_COMPLIANT if raw identifier values are visible in a saved output
       or a print/log statement.
+      Return NOT_APPLICABLE for test files that contain PII-like strings only
+      as regex patterns or assertion strings verifying that those patterns do
+      NOT appear in logs or outputs (e.g. a test asserting no email address
+      appears in a log file). Such files are PII guardrails, not PII exposures.
     severity: HIGH
 
   - policy_id: NAM-5
@@ -116,35 +142,36 @@ policies:
       the repository root.
     applies_when: "Every repo."
     evaluation_hint: >
-      Inspect all filenames, folder names, and data file column headers for:
-      (1) CamelCase on dataset/file names -- flag snake_case, all-lowercase,
-      or space-separated file names as NON_COMPLIANT
-      (e.g. ethanol_market_rate.csv or "Ethanol Market Rate.csv" are violations;
-      EthanolMarketRate_2024-07-01.csv is compliant);
-      (2) date suffixes must be yyyy-MM-dd format -- flag yyyyMMdd (no
-      separators, e.g. 20240701) or dd-MM-yyyy or any other variant as
-      NON_COMPLIANT; the correct form is 2024-07-01 with hyphens;
-      (3) folder names must use <Project>_<Feature> as a single folder name
-      with an underscore separator (e.g. Polymers_MarketRate,
-      Treasury_Pipeline) -- do NOT flag this pattern as non-compliant;
-      a two-level nested path like Polymers/MarketRate is also acceptable but
-      the single-folder underscore pattern is preferred;
-      (4) vague or versioned names anywhere in the tree: Untitled, final, copy,
-      v2, ACTUAL, temp, test123 -- flag as NON_COMPLIANT;
-      (5) names ending with underscore, containing consecutive underscores, or
-      containing spaces -- flag as NON_COMPLIANT;
-      (6) names starting with a digit or special character -- flag as NON_COMPLIANT;
-      (7) data file column headers not in snake_case, or plural column names
-      (e.g. customers, products) -- flag as NON_COMPLIANT;
-      (8) missing README.md at the repository root -- flag as NON_COMPLIANT.
-      Infrastructure and CI/CD files with system-mandated names that
-      cannot be freely renamed (azure-pipelines.yml,
-      .github/workflows/*.yml, Dockerfile, Makefile, .gitignore,
-      requirements.txt, setup.cfg, pyproject.toml, conftest.py,
-      __init__.py, README.md) are exempt from the CamelCase rule --
-      do not flag them as NON_COMPLIANT for their own filename.
-      The repository root folder name is governed exclusively by REPO-9;
-      do not evaluate it under this policy.
+      Apply these rules in order. Flag NON_COMPLIANT only for a clear,
+      specific violation. When in doubt, return COMPLIANT.
+
+      FILES: Dataset and pipeline file names must be CamelCase, optionally
+      followed by an underscore and a yyyy-MM-dd date suffix.
+      Compliant: EthanolMarketRate_2024-07-01.csv, IngestData.py.
+      Violations: ethanol_market_rate.csv, ingest_data.py, 20240701 date
+      suffix (no hyphens), space in name, name starting with a digit.
+
+      FOLDERS: Pipeline and feature folders use <Project>_<Feature> with a
+      single underscore (e.g. Risk_Pipeline, Treasury_SQL,
+      Collateral_Pipeline). This IS the correct pattern -- never flag it.
+      Medallion layer folders (bronze, silver, gold) are exempt by
+      convention. The repository root folder is governed by REPO-9 only.
+
+      VAGUE NAMES: Flag Untitled, final, copy, v2, ACTUAL, temp as
+      NON_COMPLIANT anywhere in the file tree.
+
+      CSV/PARQUET COLUMNS: Headers must be snake_case and singular.
+      Violations: customerID (camelCase), customers (plural).
+
+      README: A README.md must exist at the repository root; flag missing.
+
+      EXEMPT from CamelCase: azure-pipelines.yml, .github/workflows/*.yml,
+      Dockerfile, Makefile, .gitignore, requirements.txt, setup.cfg,
+      pyproject.toml, conftest.py, __init__.py, README.md.
+
+      RENAME SUGGESTIONS: Always suggest the CamelCase_yyyy-MM-dd.csv
+      target. Never suggest snake_case, kebab-case, or all-lowercase --
+      those are violations themselves.
     severity: LOW
 
   - policy_id: REPRO-6
@@ -243,7 +270,11 @@ policies:
       path receives raw, un-aggregated rows directly from bronze without
       any grouping, aggregation, or enrichment step.
       Return NOT_APPLICABLE if the code has no references to tiered storage
-      paths or schemas.
+      paths or schemas, OR if the file is a standalone SQL DDL file whose
+      content is limited to schema definitions (CREATE TABLE, CREATE INDEX,
+      ALTER TABLE) with no data loading, INSERT, or transformation statements
+      -- a DDL file defines a schema but does not implement a data pipeline,
+      so medallion ordering cannot be assessed from it alone.
     severity: HIGH
 
   - policy_id: GIT-8
@@ -277,6 +308,14 @@ policies:
       placeholder equivalent to \d+ -- do not flag it as a non-compliant
       branch name. Only flag concrete branch names found in CI/CD YAML
       trigger/pr/branches sections or in git log output.
+      SCOPE: only evaluate files that are CI/CD pipeline configurations
+      (azure-pipelines.yml, .github/workflows/*.yml), PR templates
+      (PULL_REQUEST_TEMPLATE.md), or developer contribution guides
+      (CONTRIBUTING.md). Agent instruction files, spec-kit workflow files,
+      and general design or specification documents (e.g.
+      .github/agents/*.md, *.agent.md, specs/**/*.md, quickstart.md,
+      data-model.md, tasks.md) are NOT governance control files and must
+      return NOT_APPLICABLE for this policy.
     severity: MEDIUM
 
   - policy_id: REPO-9
@@ -323,17 +362,32 @@ policies:
       Any .sql file or Python/notebook code that contains SQL DDL (CREATE TABLE,
       CREATE VIEW, CREATE PROCEDURE) or DML referencing named SQL objects.
     evaluation_hint: >
-      Scan .sql files and SQL strings embedded in .py or .ipynb files for:
+      Only evaluate .sql files and SQL strings embedded in .py or .ipynb
+      files. Do NOT evaluate README.md or other markdown/documentation files
+      under this policy -- they describe SQL objects but are not SQL code.
+      Scan SQL code for:
       (1) table or view names not in PascalCase -- flag all-lowercase or
       snake_case names (e.g. ethanol_market_rate, tbl_ethanol) as NON_COMPLIANT;
       (2) any Hungarian notation prefix: tbl_, vw_, sp_, fn_, udf_ -- flag
       as NON_COMPLIANT regardless of the rest of the name;
       (3) data model tables (used in star-schema joins with dimension/fact
-      relationships) missing the Dim or Fact suffix -- flag as NON_COMPLIANT;
-      (4) stored procedures lacking a verb in their name, or using a forbidden
-      verb like Create or Creating -- flag as NON_COMPLIANT;
-      (5) schema names not in the approved list or that use underscores or
-      exceed 30 characters -- flag as NON_COMPLIANT;
+      relationships) missing the Dim or Fact suffix -- flag as NON_COMPLIANT.
+      The Dim/Fact suffix must appear at the END of the name
+      (e.g. EthanolMarketRateFact, CustomerDim are correct;
+      FactEthanolMarketRate or DimCustomer are wrong prefix forms and
+      should be flagged). A table already ending in Fact or Dim is compliant
+      and must NEVER be renamed to add a second suffix (e.g.
+      LiquidityForecastFact is already compliant -- do not suggest
+      LiquidityForecastFactFact);
+      (4) stored procedure OBJECT NAMES (the identifier after CREATE PROCEDURE)
+      using a forbidden verb like Create, Creating, Delete, Drop -- flag as
+      NON_COMPLIANT. This rule applies ONLY to the SQL object name defined
+      inside the file, never to the .sql filename itself (a file named
+      CreateCustomerFact.sql is a normal DDL file convention and must NOT
+      be flagged under this rule);
+      (5) schema names not in the approved list (Staging, Production,
+      MetaData, Logging, Config, Reporting, PowerBI, DataMart) or that use
+      underscores or exceed 30 characters -- flag as NON_COMPLIANT;
       (6) any table whose name exactly matches one of its own column names --
       flag as NON_COMPLIANT.
       Return NOT_APPLICABLE if no SQL object definitions are present.

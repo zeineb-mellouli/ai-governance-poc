@@ -1,12 +1,15 @@
 """Train the credit scoring model used to grade new credit applications."""
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
+Path("logs").mkdir(parents=True, exist_ok=True)
+Path("gold").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/train.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 

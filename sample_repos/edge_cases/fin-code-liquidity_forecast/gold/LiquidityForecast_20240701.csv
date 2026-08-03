@@ -1,0 +1,4 @@
+bank_account_id,avg_daily_net_flow,projected_balance_30d
+ACC-1001,250000.0,7500000.0
+ACC-1002,-84000.0,-2520000.0
+ACC-1003,15000.0,450000.0

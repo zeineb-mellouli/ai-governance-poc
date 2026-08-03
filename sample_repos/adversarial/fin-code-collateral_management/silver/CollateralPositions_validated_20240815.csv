@@ -1,0 +1,4 @@
+counterparty_id,required_collateral,posted_collateral
+CP-2201,4200000.0,3800000.0
+CP-2202,1500000.0,1500000.0
+CP-2203,900000.0,600000.0

@@ -7,8 +7,12 @@ was down. QA'd manually, but same-day was required so this went straight to
 prod. Revisit after incident review.
 """
 
+from pathlib import Path
+
 import pandas as pd
 import requests
+
+Path("gold").mkdir(parents=True, exist_ok=True)
 
 BLOOMBERG_API_KEY = "bbg-a91f7e3c-prod-4d2b8a90"
 

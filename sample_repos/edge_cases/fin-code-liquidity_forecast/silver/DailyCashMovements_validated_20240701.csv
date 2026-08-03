@@ -1,0 +1,4 @@
+bank_account_id,movement_type,amount,value_date
+ACC-1001,INFLOW,250000.0,2024-07-01
+ACC-1002,OUTFLOW,-84000.0,2024-07-01
+ACC-1003,INFLOW,15000.0,2024-07-01

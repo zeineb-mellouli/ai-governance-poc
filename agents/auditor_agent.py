@@ -73,6 +73,12 @@ For each candidate policy that genuinely applies to this file's content, decide:
 If a policy clearly does not apply to this file (e.g. a SQL naming policy for a file
 with no SQL in it), omit it entirely from your response instead of returning a verdict.
 
+CRITICAL CONSISTENCY RULE: If your evidence says there is no violation, or that the
+code is already compliant, you MUST return status "COMPLIANT" -- never "NON_COMPLIANT".
+A finding whose evidence contains phrases like "no violation", "already compliant",
+"no change needed", "no strong violation found", or "not applicable" but whose status
+is NON_COMPLIANT is always wrong. When in doubt, return COMPLIANT or omit the policy.
+
 Respond with a single JSON object: {"verdicts": [{"policy_id": "...", "status": "...", "confidence": 0.0, "evidence": "..."}]}
 """
 
@@ -201,12 +207,20 @@ def _evaluate_file(
         if pid not in policies_by_id:
             continue
         policy = policies_by_id[pid]
+        # Normalize common LLM typo: NON_APPLICABLE → NOT_APPLICABLE
+        raw_status = verdict["status"]
+        if raw_status == "NON_APPLICABLE":
+            raw_status = "NOT_APPLICABLE"
+        try:
+            status = FindingStatus(raw_status)
+        except ValueError:
+            continue  # unknown status value — skip rather than crash the whole file
         findings.append(Finding(
             policy_id=pid,
             title=policy["title"],
             severity=policy["severity"],
             file_path=file.path,
-            status=FindingStatus(verdict["status"]),
+            status=status,
             confidence_score=float(verdict["confidence"]),
             evidence=verdict["evidence"],
             retrieval_chunk_id=pid,
@@ -245,6 +259,11 @@ For each such policy, decide:
 - status: "COMPLIANT" or "NON_COMPLIANT"
 - confidence: a number from 0.0 to 1.0
 - evidence: a precise description, citing the relevant file paths, that justifies the verdict
+
+CRITICAL CONSISTENCY RULE: If your evidence says there is no violation, or that the
+repository is already compliant, you MUST return status "COMPLIANT" -- never "NON_COMPLIANT".
+A finding whose evidence contains "no violation", "already compliant", "no change needed",
+or "not applicable" but whose status is NON_COMPLIANT is always wrong.
 
 If no policy meets this bar, return an empty verdicts list.
 
@@ -321,12 +340,19 @@ def _evaluate_repo_holistic(
         if pid not in policies_by_id:
             continue
         policy = policies_by_id[pid]
+        raw_status = verdict["status"]
+        if raw_status == "NON_APPLICABLE":
+            raw_status = "NOT_APPLICABLE"
+        try:
+            status = FindingStatus(raw_status)
+        except ValueError:
+            continue
         findings.append(Finding(
             policy_id=pid,
             title=policy["title"],
             severity=policy["severity"],
             file_path=None,
-            status=FindingStatus(verdict["status"]),
+            status=status,
             confidence_score=float(verdict["confidence"]),
             evidence=verdict["evidence"],
             retrieval_chunk_id=pid,

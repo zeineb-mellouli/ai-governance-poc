@@ -1,12 +1,15 @@
 """Silver -> Gold: project each bank account's balance forward 30 days."""
 
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 
+Path("logs").mkdir(parents=True, exist_ok=True)
+Path("gold").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(filename="logs/forecast.log", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
