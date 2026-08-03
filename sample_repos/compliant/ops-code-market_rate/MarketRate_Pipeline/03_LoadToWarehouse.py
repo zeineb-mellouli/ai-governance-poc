@@ -80,7 +80,7 @@ def load_to_warehouse(df: pd.DataFrame, engine: sa.Engine) -> int:
 def main() -> None:
     # Medallion: read from gold layer only — this script never touches bronze or silver
     transformed_folder = os.environ.get("GOLD_PATH", "gold")
-    source_file = os.path.join(transformed_folder, "EthanolMarketRate_20240701.csv")
+    source_file = os.path.join(transformed_folder, "EthanolMarketRate_2024-07-01.csv")
 
     logger.info("[GOLD → Warehouse] Load job starting — gold: %s  target: %s", source_file, FULL_TABLE)
 

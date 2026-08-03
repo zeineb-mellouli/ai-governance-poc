@@ -28,8 +28,8 @@ np.random.seed(42)
 
 APPROVED_REGIONS = {"Europe", "Asia", "Americas", "Middle East"}
 SOURCE_FILES = [
-    "EthanolMarketRate_20240701.csv",
-    "PolymersMarketRate_20240701.csv",
+    "EthanolMarketRate_2024-07-01.csv",
+    "PolymersMarketRate_2024-07-01.csv",
 ]
 
 

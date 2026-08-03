@@ -37,6 +37,10 @@ policies:
       raise / filter) validating null counts, duplicate counts, value
       ranges, or train/test leakage. If data is loaded and used with no
       such checks anywhere in the file, flag NON_COMPLIANT.
+      If the file is a raw data file (CSV, Parquet, JSON data, or similar)
+      containing no executable code, return NOT_APPLICABLE -- data quality
+      validation is the responsibility of the code that consumes the file,
+      not the file itself.
     severity: HIGH
 
   - policy_id: OPS-2
@@ -100,25 +104,31 @@ policies:
     description: >
       All files and folders must follow the organisation's naming convention.
       Dataset and file names are written in CamelCase. Folder structure uses
-      the pattern <Project>_<Feature> (e.g. Polymers_MarketRate). File names
-      follow <DatasetName>_<yyyyMMdd> (e.g. EthanolMarketRate_20240701.csv).
+      the pattern <Project>_<Feature> as a single folder name using an
+      underscore separator (e.g. Polymers_MarketRate). File names
+      follow <DatasetName>_<yyyy-MM-dd> (e.g. EthanolMarketRate_2024-07-01.csv).
       Rules that apply to all names: begin with a letter; do not end with an
-      underscore; only letters, numbers, and underscores; no consecutive
-      underscores; no spaces; max 126 characters; avoid abbreviations unless
-      commonly understood. Column names in data files (CSV, Parquet) use
-      snake_case and are always singular. A README describing the project's
-      purpose and structure is required at the repository root.
+      underscore; only letters, numbers, and underscores (plus hyphens in the
+      date portion only); no consecutive underscores; no spaces; max 126
+      characters; avoid abbreviations unless commonly understood. Column names
+      in data files (CSV, Parquet) use snake_case and are always singular.
+      A README describing the project's purpose and structure is required at
+      the repository root.
     applies_when: "Every repo."
     evaluation_hint: >
       Inspect all filenames, folder names, and data file column headers for:
       (1) CamelCase on dataset/file names -- flag snake_case, all-lowercase,
       or space-separated file names as NON_COMPLIANT
       (e.g. ethanol_market_rate.csv or "Ethanol Market Rate.csv" are violations;
-      EthanolMarketRate_20240701.csv is compliant);
-      (2) date suffixes must be yyyyMMdd format -- flag yyyy-MM-dd, dd-MM-yyyy,
-      or any other variant as NON_COMPLIANT;
-      (3) folder names following <Project>_<Feature> -- flag a flat root with
-      no project/feature separation as NON_COMPLIANT;
+      EthanolMarketRate_2024-07-01.csv is compliant);
+      (2) date suffixes must be yyyy-MM-dd format -- flag yyyyMMdd (no
+      separators, e.g. 20240701) or dd-MM-yyyy or any other variant as
+      NON_COMPLIANT; the correct form is 2024-07-01 with hyphens;
+      (3) folder names must use <Project>_<Feature> as a single folder name
+      with an underscore separator (e.g. Polymers_MarketRate,
+      Treasury_Pipeline) -- do NOT flag this pattern as non-compliant;
+      a two-level nested path like Polymers/MarketRate is also acceptable but
+      the single-folder underscore pattern is preferred;
       (4) vague or versioned names anywhere in the tree: Untitled, final, copy,
       v2, ACTUAL, temp, test123 -- flag as NON_COMPLIANT;
       (5) names ending with underscore, containing consecutive underscores, or
@@ -127,6 +137,14 @@ policies:
       (7) data file column headers not in snake_case, or plural column names
       (e.g. customers, products) -- flag as NON_COMPLIANT;
       (8) missing README.md at the repository root -- flag as NON_COMPLIANT.
+      Infrastructure and CI/CD files with system-mandated names that
+      cannot be freely renamed (azure-pipelines.yml,
+      .github/workflows/*.yml, Dockerfile, Makefile, .gitignore,
+      requirements.txt, setup.cfg, pyproject.toml, conftest.py,
+      __init__.py, README.md) are exempt from the CamelCase rule --
+      do not flag them as NON_COMPLIANT for their own filename.
+      The repository root folder name is governed exclusively by REPO-9;
+      do not evaluate it under this policy.
     severity: LOW
 
   - policy_id: REPRO-6
@@ -147,6 +165,15 @@ policies:
       Flag NON_COMPLIANT if dependencies are unpinned, no random seed is
       set anywhere in a training/sampling step, or raw source files are
       directly overwritten by processing code.
+      When evaluating a Python or notebook file in isolation: only check
+      for random seeds within that file; do not flag it NON_COMPLIANT
+      for a missing requirements file -- the dependency-pinning check
+      applies when evaluating requirements.txt / environment.yml /
+      pyproject.toml directly. If the file performs no stochastic
+      operations (no imports of random, numpy.random, sklearn, torch, or
+      similar stochastic libraries; no model training or sampling calls),
+      return NOT_APPLICABLE -- reproducibility seeding only applies where
+      randomness is actually introduced.
     severity: MEDIUM
 
   - policy_id: DM-7
@@ -245,6 +272,11 @@ policies:
       (4) if a branch protection config file exists, check that master and
       develop require reviews before merge. Flag NON_COMPLIANT for any
       deviation from the three-tier branch model or missing review requirement.
+      When reviewing branch names in documentation files (README.md,
+      CONTRIBUTING.md), treat {id} or {number} as a valid numeric
+      placeholder equivalent to \d+ -- do not flag it as a non-compliant
+      branch name. Only flag concrete branch names found in CI/CD YAML
+      trigger/pr/branches sections or in git log output.
     severity: MEDIUM
 
   - policy_id: REPO-9

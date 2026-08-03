@@ -7,10 +7,11 @@ could be misapplied to the wrong resource.
 """
 
 import json
+import os
 
 from openai import OpenAI
 
-from agents.llm_client import get_client, get_default_model
+from agents.llm_client import get_client
 from agents.schemas import Finding, FindingStatus, Remediation
 
 CONFIDENCE_THRESHOLD = 0.6
@@ -65,7 +66,7 @@ def remediate(
         try:
             file_content = file_content_by_path.get(finding.file_path) if finding.file_path else None
             response = client.chat.completions.create(
-                model=get_default_model(),
+                model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": _build_user_content(finding, file_content)},

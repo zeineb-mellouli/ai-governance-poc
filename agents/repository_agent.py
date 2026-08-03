@@ -88,7 +88,7 @@ def scan(repo_path: str) -> RepositorySnapshot:
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
         for filename in filenames:
             file_path = Path(dirpath) / filename
-            rel_path = str(file_path.relative_to(root))
+            rel_path = file_path.relative_to(root).as_posix()
             suffix = file_path.suffix.lower()
 
             if file_path.parent == root and filename.lower() in ("readme.md", "readme", "readme.txt"):

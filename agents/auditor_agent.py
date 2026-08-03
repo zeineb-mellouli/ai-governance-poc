@@ -22,6 +22,7 @@ Design notes:
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -29,7 +30,7 @@ import chromadb
 import yaml
 from openai import OpenAI
 
-from agents.llm_client import get_client, get_default_model
+from agents.llm_client import get_client
 from agents.schemas import FileRecord, Finding, FindingStatus, RepositorySnapshot
 
 CHROMA_DB_PATH = "chroma_db"
@@ -37,6 +38,12 @@ COLLECTION_NAME = "governance_policies"
 POLICIES_PATH = "policies/policies.yaml"
 
 REPO_NAME_PATTERN = re.compile(r"^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$")
+
+# Policies that have a dedicated deterministic check in _evaluate_repo_level.
+# Excluding them from all LLM passes (per-file and holistic) prevents the LLM
+# from re-evaluating them on individual file content and producing a verdict
+# that contradicts the authoritative deterministic result.
+DETERMINISTIC_ONLY_POLICIES = frozenset({"REPO-9"})
 
 RRF_K = 60
 
@@ -163,6 +170,8 @@ def _evaluate_file(
 
     candidate_blocks = []
     for pid, _score in ranked:
+        if pid in DETERMINISTIC_ONLY_POLICIES:
+            continue
         p = policies_by_id[pid]
         candidate_blocks.append(
             f"- policy_id: {pid}\n  title: {p['title']}\n  severity: {p['severity']}\n"
@@ -176,7 +185,7 @@ def _evaluate_file(
     )
 
     response = client.chat.completions.create(
-        model=get_default_model(),
+        model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -281,6 +290,8 @@ def _evaluate_repo_holistic(
 
     candidate_blocks = []
     for pid, _score in ranked:
+        if pid in DETERMINISTIC_ONLY_POLICIES:
+            continue
         p = policies_by_id[pid]
         candidate_blocks.append(
             f"- policy_id: {pid}\n  title: {p['title']}\n  severity: {p['severity']}\n"
@@ -294,7 +305,7 @@ def _evaluate_repo_holistic(
     )
 
     response = client.chat.completions.create(
-        model=get_default_model(),
+        model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
         messages=[
             {"role": "system", "content": HOLISTIC_SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
