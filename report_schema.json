@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "Finding": {
+      "properties": {
+        "policy_id": {
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "file_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Path"
+        },
+        "status": {
+          "$ref": "#/$defs/FindingStatus"
+        },
+        "confidence_score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "evidence": {
+          "title": "Evidence",
+          "type": "string"
+        },
+        "retrieval_chunk_id": {
+          "title": "Retrieval Chunk Id",
+          "type": "string"
+        },
+        "retrieval_score": {
+          "title": "Retrieval Score",
+          "type": "number"
+        },
+        "remediation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Remediation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "risk_score": {
+          "readOnly": true,
+          "title": "Risk Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "policy_id",
+        "title",
+        "severity",
+        "status",
+        "confidence_score",
+        "evidence",
+        "retrieval_chunk_id",
+        "retrieval_score",
+        "risk_score"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingStatus": {
+      "enum": [
+        "COMPLIANT",
+        "NON_COMPLIANT",
+        "NOT_APPLICABLE",
+        "NEEDS_REVIEW"
+      ],
+      "title": "FindingStatus",
+      "type": "string"
+    },
+    "Remediation": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "fix": {
+          "title": "Fix",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "fix"
+      ],
+      "title": "Remediation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "repo_name": {
+      "title": "Repo Name",
+      "type": "string"
+    },
+    "repo_path": {
+      "title": "Repo Path",
+      "type": "string"
+    },
+    "run_timestamp": {
+      "title": "Run Timestamp",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "summary": {
+      "additionalProperties": true,
+      "readOnly": true,
+      "title": "Summary",
+      "type": "object"
+    }
+  },
+  "required": [
+    "repo_name",
+    "repo_path",
+    "summary"
+  ],
+  "title": "ComplianceReport",
+  "type": "object"
+}

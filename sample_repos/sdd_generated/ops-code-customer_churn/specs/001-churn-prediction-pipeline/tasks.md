@@ -1,3 +1,4 @@
+
 ---
 description: "Task list for Customer Churn Prediction Pipeline"
 ---
@@ -34,10 +35,10 @@ implementation task within each phase.
 **Purpose**: Project initialization — directory structure, dependencies, package
 scaffolding, and the README required by NAM-5.
 
-- [X] T001 Create directory structure: `data/bronze/`, `data/silver/`, `data/gold/`, `models/`, `logs/`, `mlruns/`, `src/utils/`, `src/CustomerChurn_Ingest/`, `src/CustomerChurn_Validate/`, `src/CustomerChurn_Train/`, `src/CustomerChurn_Predict/`, `tests/unit/`, `tests/integration/`
-- [X] T002 Create `requirements.txt` with fully pinned versions: `pandas==2.2.2`, `pandera==0.19.2`, `scikit-learn==1.5.0`, `mlflow==2.13.0`, `joblib==1.4.2`, `numpy==1.26.4`, `pyarrow==16.1.0`, `pytest==8.2.0`
-- [X] T003 [P] Create `README.md` at repo root covering: project purpose, medallion layer descriptions, Gold table grain statement ("one churn prediction per `customer_id` per `run_date`"), and pipeline invocation instructions
-- [X] T004 [P] Create `__init__.py` files for all Python packages: `src/__init__.py`, `src/utils/__init__.py`, `src/CustomerChurn_Ingest/__init__.py`, `src/CustomerChurn_Validate/__init__.py`, `src/CustomerChurn_Train/__init__.py`, `src/CustomerChurn_Predict/__init__.py`
+- [ ] T001 Create directory structure: `data/bronze/`, `data/silver/`, `data/gold/`, `models/`, `logs/`, `mlruns/`, `src/utils/`, `src/CustomerChurn_Ingest/`, `src/CustomerChurn_Validate/`, `src/CustomerChurn_Train/`, `src/CustomerChurn_Predict/`, `tests/unit/`, `tests/integration/`
+- [ ] T002 Create `requirements.txt` with fully pinned versions: `pandas==2.2.2`, `pandera==0.19.2`, `scikit-learn==1.5.0`, `mlflow==2.13.0`, `joblib==1.4.2`, `numpy==1.26.4`, `pyarrow==16.1.0`, `pytest==8.2.0`
+- [ ] T003 [P] Create `README.md` at repo root covering: project purpose, medallion layer descriptions, Gold table grain statement ("one churn prediction per `customer_id` per `run_date`"), and pipeline invocation instructions
+- [ ] T004 [P] Create `__init__.py` files for all Python packages: `src/__init__.py`, `src/utils/__init__.py`, `src/CustomerChurn_Ingest/__init__.py`, `src/CustomerChurn_Validate/__init__.py`, `src/CustomerChurn_Train/__init__.py`, `src/CustomerChurn_Predict/__init__.py`
 
 ---
 
@@ -47,7 +48,7 @@ scaffolding, and the README required by NAM-5.
 
 **⚠️ CRITICAL**: Phases 3–6 depend on this phase being complete.
 
-- [X] T005 Create `src/utils/logging_config.py` — configure a logger factory that attaches a `FileHandler` writing to `logs/pipeline_<yyyyMMdd>.log` and a `StreamHandler` to stdout; format: `%(asctime)s | %(name)s | %(levelname)s | %(message)s`; log messages MUST contain only counts, IDs, file paths, and metric values — never raw customer field values
+- [ ] T005 Create `src/utils/logging_config.py` — configure a logger factory that attaches a `FileHandler` writing to `logs/pipeline_<yyyyMMdd>.log` and a `StreamHandler` to stdout; format: `%(asctime)s | %(name)s | %(levelname)s | %(message)s`; log messages MUST contain only counts, IDs, file paths, and metric values — never raw customer field values
 
 **Checkpoint**: Logging infrastructure ready — user story implementation can begin.
 
@@ -65,11 +66,11 @@ plus `ingested_at` and `source_file`; confirm idempotent re-run adds zero rows.
 
 ### Tests for User Story 1 ⚠️ Write these BEFORE implementing T007
 
-- [X] T006 [P] [US1] Write `tests/unit/test_ingest.py` — cover: (a) happy-path ingestion copies all rows and adds `ingested_at` + `source_file` columns; (b) idempotent re-run writes zero additional rows and logs WARNING; (c) missing source file exits 1; (d) empty CSV (header only) exits 0 with zero Bronze rows written and WARNING logged; (e) CSV with a missing required column exits 1 with an error message naming the missing column
+- [ ] T006 [P] [US1] Write `tests/unit/test_ingest.py` — cover: (a) happy-path ingestion copies all rows and adds `ingested_at` + `source_file` columns; (b) idempotent re-run writes zero additional rows and logs WARNING; (c) missing source file exits 1; (d) empty CSV (header only) exits 0 with zero Bronze rows written and WARNING logged; (e) CSV with a missing required column exits 1 with an error message naming the missing column
 
 ### Implementation for User Story 1
 
-- [X] T007 [US1] Implement `src/CustomerChurn_Ingest/ingest.py` (depends on T006 being written first):
+- [ ] T007 [US1] Implement `src/CustomerChurn_Ingest/ingest.py` (depends on T006 being written first):
   - CLI args: `--source-file` (required), `--bronze-dir` (default: `data/bronze`)
   - **Schema guard (FR-015 + H3)**: after reading the CSV, verify all seven expected columns are present; if any are missing or unexpected columns appear, call `logger.error` naming the offending columns and exit `1` without writing Bronze
   - **Empty-file guard (M2)**: if the landing CSV has zero data rows after the header, log `WARNING "Empty batch: zero records in <filename>, no Bronze written"` and exit `0`
@@ -96,17 +97,17 @@ reasons; confirm log file grep finds no raw customer field values.
 
 ### Tests for User Story 2 ⚠️ Write these BEFORE implementing T009–T010
 
-- [X] T008 [P] [US2] Write `tests/unit/test_validate.py` — cover: (a) PII columns (`full_name`, `email`, `phone_number`) absent from Silver output; (b) records with missing required fields rejected; (c) all occurrences of a duplicated `customer_id` rejected; (d) records with negative `account_tenure_months` or `monthly_usage_hours` rejected; (e) ValidationReport JSON has correct `accepted_count`/`rejected_count` with no raw field values in `rejections` entries; (f) exit code `3` when all records rejected; (g) empty Bronze file (zero rows) exits `0` with zero Silver rows written and WARNING logged
+- [ ] T008 [P] [US2] Write `tests/unit/test_validate.py` — cover: (a) PII columns (`full_name`, `email`, `phone_number`) absent from Silver output; (b) records with missing required fields rejected; (c) all occurrences of a duplicated `customer_id` rejected; (d) records with negative `account_tenure_months` or `monthly_usage_hours` rejected; (e) ValidationReport JSON has correct `accepted_count`/`rejected_count` with no raw field values in `rejections` entries; (f) exit code `3` when all records rejected; (g) empty Bronze file (zero rows) exits `0` with zero Silver rows written and WARNING logged
 
 ### Implementation for User Story 2
 
-- [X] T009 [P] [US2] Define the Silver pandera schema in `src/CustomerChurn_Validate/schema.py`:
+- [ ] T009 [P] [US2] Define the Silver pandera schema in `src/CustomerChurn_Validate/schema.py`:
   - `customer_id`: `str`, not nullable
   - `account_tenure_months`: `float`, not nullable, `>= 0.0`
   - `monthly_usage_hours`: `float`, not nullable, `>= 0.0`
   - `is_churned`: `int`, not nullable, in `{0, 1}`
   - Note: uniqueness across the batch is checked separately in `validate.py` (pandera does not handle cross-row deduplication); this schema validates per-row constraints only
-- [X] T010 [US2] Implement `src/CustomerChurn_Validate/validate.py` (depends on T008 written first, T009 complete):
+- [ ] T010 [US2] Implement `src/CustomerChurn_Validate/validate.py` (depends on T008 written first, T009 complete):
   - CLI args: `--bronze-file` (required), `--silver-dir` (default: `data/silver`)
   - **Empty-Bronze guard (M2)**: if Bronze Parquet has zero rows, log `WARNING "Empty Bronze batch: zero records, no Silver written"` and exit `0`
   - Read Bronze Parquet; immediately drop `full_name`, `email`, `phone_number` before any processing or logging call
@@ -133,14 +134,14 @@ metric values are identical across both runs.
 
 ### Tests for User Story 3 ⚠️ Write these BEFORE implementing T012–T013
 
-- [X] T011 [P] [US3] Write `tests/unit/test_features.py` — cover: (a) `build_features()` returns feature matrix `X` with columns `account_tenure_months` and `monthly_usage_hours` in that order; (b) label vector `y` equals the `is_churned` column; (c) `X` and `y` have equal row count; (d) function raises a descriptive error when required columns are absent from the input DataFrame
+- [ ] T011 [P] [US3] Write `tests/unit/test_features.py` — cover: (a) `build_features()` returns feature matrix `X` with columns `account_tenure_months` and `monthly_usage_hours` in that order; (b) label vector `y` equals the `is_churned` column; (c) `X` and `y` have equal row count; (d) function raises a descriptive error when required columns are absent from the input DataFrame
 
 ### Implementation for User Story 3
 
-- [X] T012 [P] [US3] Implement feature engineering in `src/CustomerChurn_Train/features.py`:
+- [ ] T012 [P] [US3] Implement feature engineering in `src/CustomerChurn_Train/features.py`:
   - Function `build_features(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]` returning feature matrix `X` (columns: `account_tenure_months`, `monthly_usage_hours`) and label vector `y` (`is_churned`)
   - No stochastic operations in this file
-- [X] T013 [US3] Implement model training in `src/CustomerChurn_Train/train.py` (depends on T011 written first, T012 complete):
+- [ ] T013 [US3] Implement model training in `src/CustomerChurn_Train/train.py` (depends on T011 written first, T012 complete):
   - CLI args: `--silver-dir` (required), `--model-dir` (default: `models`), `--random-seed` (default: `42`), `--test-split` (default: `0.2`)
   - Load all `*.parquet` files from `--silver-dir`; concatenate into one DataFrame
   - Call `features.build_features()` to get `X`, `y`
@@ -167,11 +168,11 @@ pass. Then run prediction against the Silver fixture and trained model; confirm 
 
 ### Tests for User Story 4 ⚠️ Write these BEFORE implementing T015
 
-- [X] T014 [P] [US4] Write `tests/unit/test_predict.py` — cover: (a) Gold output has one row per unique `customer_id` from the Silver input; (b) every `churn_prediction_key` is a valid UUID string and non-null; (c) `is_churn_predicted` is in `{0, 1}` for every row; (d) `churn_probability` is between 0.0 and 1.0 for every row; (e) idempotency guard: if Gold file exists, stage exits `0` and logs WARNING without overwriting
+- [ ] T014 [P] [US4] Write `tests/unit/test_predict.py` — cover: (a) Gold output has one row per unique `customer_id` from the Silver input; (b) every `churn_prediction_key` is a valid UUID string and non-null; (c) `is_churn_predicted` is in `{0, 1}` for every row; (d) `churn_probability` is between 0.0 and 1.0 for every row; (e) idempotency guard: if Gold file exists, stage exits `0` and logs WARNING without overwriting
 
 ### Implementation for User Story 4
 
-- [X] T015 [US4] Implement `src/CustomerChurn_Predict/predict.py` (depends on T014 written first):
+- [ ] T015 [US4] Implement `src/CustomerChurn_Predict/predict.py` (depends on T014 written first):
   - CLI args: `--silver-file` (required), `--model-file` (required), `--gold-dir` (default: `data/gold`)
   - Load Silver Parquet and the joblib model
   - Call `model.predict()` for `is_churn_predicted` and `model.predict_proba()[:,1]` for `churn_probability`
@@ -194,9 +195,9 @@ Bronze 30 rows → Silver 25 rows → Gold 25 rows.
 
 **Purpose**: Full pipeline runner, end-to-end integration test, and quickstart validation.
 
-- [X] T016 [P] Create `src/pipeline.py` — CLI runner that chains all four stages in order (`ingest` → `validate` → `train` → `predict`); accepts the union of all stage args plus `--random-seed`; aborts and logs the failing stage name on any non-zero exit code; uses logger `customer_churn.pipeline`
-- [X] T017 [P] Write `tests/integration/test_pipeline_e2e.py` — end-to-end test against `data/landing/CustomerChurn_20260714.csv`: (a) run full pipeline via `src/pipeline.py`; (b) assert Bronze has 30 rows; (c) assert Silver has 25 rows with no PII columns; (d) assert Gold has 25 rows with no nulls in `churn_prediction_key`; (e) scan `logs/pipeline_<today>.log` for PII patterns (names, `@example.com`, `555-01`) — assert zero matches; (f) run training a second time with same seed and assert MLflow metric values are identical across the two runs
-- [X] T018 Run quickstart.md end-to-end validation manually against `data/landing/CustomerChurn_20260714.csv`; confirm all assertions in Steps 2–5 pass (Bronze 30, Silver 25, Gold 25, zero PII in logs, two training runs produce identical metrics)
+- [ ] T016 [P] Create `src/pipeline.py` — CLI runner that chains all four stages in order (`ingest` → `validate` → `train` → `predict`); accepts the union of all stage args plus `--random-seed`; aborts and logs the failing stage name on any non-zero exit code; uses logger `customer_churn.pipeline`
+- [ ] T017 [P] Write `tests/integration/test_pipeline_e2e.py` — end-to-end test against `data/landing/CustomerChurn_20260714.csv`: (a) run full pipeline via `src/pipeline.py`; (b) assert Bronze has 30 rows; (c) assert Silver has 25 rows with no PII columns; (d) assert Gold has 25 rows with no nulls in `churn_prediction_key`; (e) scan `logs/pipeline_<today>.log` for PII patterns (names, `@example.com`, `555-01`) — assert zero matches; (f) run training a second time with same seed and assert MLflow metric values are identical across the two runs
+- [ ] T018 Run quickstart.md end-to-end validation manually against `data/landing/CustomerChurn_20260714.csv`; confirm all assertions in Steps 2–5 pass (Bronze 30, Silver 25, Gold 25, zero PII in logs, two training runs produce identical metrics)
 
 ---
 

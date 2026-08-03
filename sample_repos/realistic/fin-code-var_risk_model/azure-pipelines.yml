@@ -1,0 +1,24 @@
+trigger:
+  branches:
+    include:
+      - master
+      - develop
+      - hotfix-var-breach-mar24
+
+pr:
+  branches:
+    include:
+      - master
+      - develop
+  autoComplete: false
+  reviewers:
+    minimumApprovers: 1
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - script: pip install -r requirements.txt
+    displayName: "chore: install dependencies"
+  - script: python Risk_Pipeline/01_IngestMarketData.py
+    displayName: "feat: run ingest"

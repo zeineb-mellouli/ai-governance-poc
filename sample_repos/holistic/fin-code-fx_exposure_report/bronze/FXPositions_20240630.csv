@@ -1,0 +1,5 @@
+position_id,currency_code,notional_local,as_of_date
+FX-1001,usd,2500000.00,2024-06-30
+FX-1002,eur,1800000.00,2024-06-30
+FX-1003,USD,950000.00,2024-06-30
+FX-1004,jpy,120000000.00,2024-06-30

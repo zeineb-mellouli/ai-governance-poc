@@ -83,6 +83,7 @@ def train(
 
         try:
             mlflow.set_tracking_uri("mlruns")
+            mlflow.set_experiment("customer_churn")
             with mlflow.start_run():
                 mlflow.log_params(
                     {
