@@ -117,5 +117,106 @@ def batch(
         raise typer.Exit(1)
 
 
+def _fmt(value: float | None) -> str:
+    return "—" if value is None else f"{value:.2f}"
+
+
+@app.command("eval")
+def evaluate(
+    reports: str = typer.Option("reports", "--reports", help="Directory holding <repo>/machine_report.json"),
+    baseline: str = typer.Option("", "--baseline", help="Second reports directory to compare against"),
+    details: bool = typer.Option(True, "--details/--no-details", help="List the individual FN / FP / unlabelled findings"),
+) -> None:
+    """Score existing reports against evaluation/expected/*.yaml. Makes no API calls."""
+    from evaluation.score import aggregate, missing_reports, score_all  # noqa: PLC0415 - keeps CLI startup light
+
+    reports_dir = Path(reports)
+    if not reports_dir.is_dir():
+        console.print(f"[red]Reports directory not found: {reports_dir}[/red]")
+        raise typer.Exit(1)
+
+    results = score_all(reports_dir)
+    if not results:
+        console.print(f"[yellow]No scorable reports in {reports_dir}. Run an audit first.[/yellow]")
+        raise typer.Exit(1)
+
+    absent = missing_reports(reports_dir)
+    if absent:
+        console.print(f"[yellow]No report for: {', '.join(absent)} — excluded from scoring.[/yellow]\n")
+
+    totals = aggregate(results)
+    base_totals = aggregate(score_all(Path(baseline))) if baseline else {}
+
+    table = Table(title="Audit accuracy vs. ground truth", show_lines=False)
+    table.add_column("Policy")
+    table.add_column("TP", justify="right", style="green")
+    table.add_column("FP", justify="right", style="red")
+    table.add_column("FN", justify="right", style="red")
+    table.add_column("Precision", justify="right")
+    table.add_column("Recall", justify="right")
+    table.add_column("F1", justify="right")
+    table.add_column("Review", justify="right", style="yellow")
+    table.add_column("Unlabelled", justify="right", style="dim")
+    table.add_column("Tolerated", justify="right", style="dim")
+    if baseline:
+        table.add_column("Δ F1", justify="right")
+
+    def _row(label: str, s, base) -> list[str]:
+        cells = [
+            label, str(s.tp), str(s.fp), str(s.fn),
+            _fmt(s.precision), _fmt(s.recall), _fmt(s.f1),
+            str(s.needs_review), str(s.unlabelled), str(s.tolerated),
+        ]
+        if baseline:
+            if base is None or base.f1 is None or s.f1 is None:
+                cells.append("—")
+            else:
+                delta = s.f1 - base.f1
+                sign = "+" if delta >= 0 else ""
+                cells.append(f"[green]{sign}{delta:.2f}[/green]" if delta >= 0 else f"[red]{delta:.2f}[/red]")
+        return cells
+
+    for policy in sorted(totals):
+        table.add_row(*_row(policy, totals[policy], base_totals.get(policy)))
+
+    overall = type(next(iter(totals.values())))()
+    for s in totals.values():
+        overall.tp += s.tp
+        overall.fp += s.fp
+        overall.fn += s.fn
+        overall.needs_review += s.needs_review
+        overall.unlabelled += s.unlabelled
+        overall.tolerated += s.tolerated
+    base_overall = None
+    if base_totals:
+        base_overall = type(next(iter(base_totals.values())))()
+        for s in base_totals.values():
+            base_overall.tp += s.tp
+            base_overall.fp += s.fp
+            base_overall.fn += s.fn
+    table.add_section()
+    table.add_row(*_row("[bold]OVERALL[/bold]", overall, base_overall))
+
+    console.print()
+    console.print(table)
+
+    if details:
+        for result in results:
+            if not (result.false_negatives or result.false_positives or result.unlabelled):
+                continue
+            console.print(f"\n[bold]{result.repo}[/bold]")
+            for policy, path, note in result.false_negatives:
+                console.print(f"  [red]MISSED [/red] {policy:<8} {path or '(repo-level)'}  — {note}")
+            for policy, path, note in result.false_positives:
+                console.print(f"  [red]FALSE+ [/red] {policy:<8} {path or '(repo-level)'}  — {note}")
+            for policy, path, _ in result.unlabelled:
+                console.print(f"  [dim]UNLABELLED {policy:<8} {path or '(repo-level)'}  — triage into the label file[/dim]")
+
+    console.print(
+        f"\n[dim]Tolerated findings are excluded from scoring — each one marks a policy "
+        f"that is underspecified. Currently {overall.tolerated}.[/dim]"
+    )
+
+
 if __name__ == "__main__":
     app()

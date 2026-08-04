@@ -1,0 +1,46 @@
+# Ground truth for sample_repos/ambiguous/fin-code-credit_scoring_model
+#
+# The ambiguity repo. Its central case: 02_TrainScoringModel.py calls
+# train_test_split WITHOUT random_state, but sets np.random.seed(42) globally
+# and documents why. sklearn's train_test_split honours the global numpy seed,
+# so the run IS reproducible -- the correct verdict is COMPLIANT.
+#
+# This is the hardest precision case in the corpus: a naive "no random_state
+# means unseeded" rule fails it, while the same rule must still fire on
+# fin-code-var_risk_model, where no seed is set at all.
+
+repo: fin-code-credit_scoring_model
+
+expect_violations:
+  - {policy: NAM-5, file: bronze/CreditApplications_20240901.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: silver/CreditApplications_validated_20240901.csv, note: 8-digit date suffix, lowercase 'validated' segment}
+  - {policy: NAM-5, file: gold/CreditScoringResults_20240901.csv, note: 8-digit date suffix}
+
+expect_clean:
+  # the central case
+  - {policy: REPRO-6, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: global np.random.seed(42) makes train_test_split deterministic}
+  - {policy: REPRO-6, file: requirements.txt, note: all four packages pinned}
+  # 01 validates properly
+  - {policy: DQ-1, file: CreditScoring_Pipeline/01_IngestApplications.py, note: asserts on income, duplicates, and label domain}
+  - {policy: ARCH-12, file: CreditScoring_Pipeline/01_IngestApplications.py, note: bronze -> silver with validation}
+  - {policy: ARCH-12, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: silver -> gold}
+  - {policy: OPS-2, file: CreditScoring_Pipeline/01_IngestApplications.py, note: logging configured}
+  - {policy: OPS-2, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: logging of the trained model accuracy}
+  - {policy: SEC-3, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: no credentials}
+  - {policy: NAM-5, file: CreditScoring_Pipeline/01_IngestApplications.py, note: 01_ stage prefix}
+  - {policy: NAM-5, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: 02_ stage prefix}
+  - {policy: SQL-10, file: CreditScoring_SQL/CreateCreditScoreFact.sql, note: Reporting.CreditScoreFact correct}
+  - {policy: SQL-11, file: CreditScoring_SQL/CreateCreditScoreFact.sql, note: PascalCase, ScoredDate qualified}
+  - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
+  # application_id is a synthetic key, not a direct identifier
+  - {policy: PII-4, file: bronze/CreditApplications_20240901.csv, note: application id and financials, no direct identifiers}
+
+tolerate:
+  # 02 reads the already-validated silver file -- the DQ-1 per-file scope question
+  - {policy: DQ-1, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: input validated upstream in 01 -- DQ-1 per-file scope}
+  # 02 writes the label column `defaulted` into gold alongside a score
+  # predicted over the full dataset, training rows included. train.log shows
+  # accuracy=1.000. This is target leakage, but DQ-1 only asks for leakage
+  # CHECKS and the file has no checks at all, so it folds into the entry above.
+  - {policy: DQ-1, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: target leakage -- label written to gold, scored on training rows}
+  - {policy: DM-7, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: gold scores for underwriting, grain undocumented}

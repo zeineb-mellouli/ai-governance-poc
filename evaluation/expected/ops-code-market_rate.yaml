@@ -1,0 +1,67 @@
+# Ground truth for sample_repos/compliant/ops-code-market_rate
+#
+# Buckets:
+#   expect_violations -- the audit MUST flag this. A miss is a false negative.
+#   expect_clean      -- the audit MUST NOT flag this. A hit is a false positive.
+#   tolerate          -- either verdict is defensible; excluded from scoring.
+#                        Every entry here marks a place the policy is
+#                        underspecified. Resolve the policy, then move the
+#                        entry into one of the buckets above.
+#
+# Authored by reading the repository against policies/policies.yaml -- NOT
+# from any generated report.
+#
+# This is the control repo: it is compliant by construction. Anything the
+# audit flags here is a false positive, which makes this file the single most
+# important precision signal in the corpus.
+
+repo: ops-code-market_rate
+
+expect_violations: []
+
+expect_clean:
+  # 01 validates with pandera plus explicit null/duplicate/range checks
+  - {policy: DQ-1, file: MarketRate_Pipeline/01_IngestData.py, note: pandera schema + null/dupe/range asserts}
+  - {policy: DQ-1, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: validate_before_load gate}
+  # all three stages configure logging with a FileHandler and log on the error path
+  - {policy: OPS-2, file: MarketRate_Pipeline/01_IngestData.py, note: logging + logger.exception}
+  - {policy: OPS-2, file: MarketRate_Pipeline/02_TransformData.py, note: logging + logger.exception}
+  - {policy: OPS-2, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: logging + logger.exception}
+  # credentials come exclusively from os.environ
+  - {policy: SEC-3, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: build_connection_string reads os.environ only}
+  # strict bronze -> silver -> gold, bronze never written by transform/load
+  - {policy: ARCH-12, file: MarketRate_Pipeline/01_IngestData.py, note: bronze -> silver with validation}
+  - {policy: ARCH-12, file: MarketRate_Pipeline/02_TransformData.py, note: silver -> gold}
+  - {policy: ARCH-12, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: reads gold only}
+  # every dependency pinned
+  - {policy: REPRO-6, file: requirements.txt, note: all 8 packages pinned}
+  - {policy: REPRO-6, file: MarketRate_Pipeline/02_TransformData.py, note: np.random.seed(42) set}
+  # CI restricted to master/develop with a reviewer requirement
+  - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only, minimumApprovers 1}
+  # PascalCase, approved Reporting schema, correct Dim/Fact suffix position
+  - {policy: SQL-10, file: MarketRate_SQL/CreateEthanolMarketRateFact.sql, note: Reporting.EthanolMarketRateFact}
+  - {policy: SQL-10, file: MarketRate_SQL/CreateProductDim.sql, note: Reporting.ProductDim}
+  - {policy: SQL-11, file: MarketRate_SQL/CreateEthanolMarketRateFact.sql, note: PascalCase, qualified date columns}
+  - {policy: SQL-11, file: MarketRate_SQL/CreateProductDim.sql, note: ProductKey surrogate, EffectiveDate qualified}
+  # grain and key documented in the DDL header comments and in both docstrings
+  - {policy: DM-7, file: MarketRate_SQL/CreateEthanolMarketRateFact.sql, note: grain and key documented in header}
+  - {policy: DM-7, file: MarketRate_Pipeline/02_TransformData.py, note: grain documented in docstring}
+  # naming: stage prefixes, CamelCase stems, correct yyyy-MM-dd suffixes,
+  # snake_case singular CSV headers (volume_tonnes is a unit, not a plural entity)
+  - {policy: NAM-5, file: MarketRate_Pipeline/01_IngestData.py, note: 01_ stage prefix is the house convention}
+  - {policy: NAM-5, file: MarketRate_Pipeline/02_TransformData.py, note: 02_ stage prefix}
+  - {policy: NAM-5, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: 03_ stage prefix}
+  - {policy: NAM-5, file: bronze/EthanolMarketRate_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
+  - {policy: NAM-5, file: bronze/PolymersMarketRate_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
+  - {policy: NAM-5, file: silver/EthanolMarketRate_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
+  - {policy: NAM-5, file: silver/PolymersMarketRate_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
+  - {policy: NAM-5, file: gold/EthanolMarketRate_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
+  - {policy: NAM-5, file: gold/PolymersMarketRate_2024-07-01.csv, note: volume_tonnes/source_region are singular entities}
+  - {policy: NAM-5, file: azure-pipelines.yml, note: explicitly exempt from CamelCase}
+  - {policy: NAM-5, file: requirements.txt, note: explicitly exempt from CamelCase}
+  - {policy: NAM-5, file: README.md, note: explicitly exempt from CamelCase}
+  # no identifier columns anywhere in this repo's data
+  - {policy: PII-4, file: gold/EthanolMarketRate_2024-07-01.csv, note: product/price/volume only, no identifiers}
+  - {policy: PII-4, file: bronze/EthanolMarketRate_2024-07-01.csv, note: product/price/volume only, no identifiers}
+
+tolerate: []

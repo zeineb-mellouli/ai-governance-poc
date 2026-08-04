@@ -1,0 +1,68 @@
+# Ground truth for sample_repos/realistic/fin-code-var_risk_model
+#
+# A plausible real repo: mostly sound, with the kind of violations that get
+# introduced under incident pressure. The most useful precision signal in the
+# corpus, because several near-misses look like violations and are not.
+
+repo: fin-code-var_risk_model
+
+expect_violations:
+  # 03_ComputeVaR.py -- the incident file
+  - {policy: SEC-3, file: Risk_Pipeline/03_ComputeVaR.py, note: hardcoded BLOOMBERG_API_KEY}
+  - {policy: ARCH-12, file: Risk_Pipeline/03_ComputeVaR.py, note: reads bronze/TradingPositions, writes gold, skips silver}
+  - {policy: PII-4, file: Risk_Pipeline/03_ComputeVaR.py, note: prints trader_name and trader_email}
+  - {policy: OPS-2, file: Risk_Pipeline/03_ComputeVaR.py, note: print() only, no logging}
+  - {policy: DQ-1, file: Risk_Pipeline/03_ComputeVaR.py, note: merges bronze positions with no validation}
+
+  # 02_VolatilityModel.py
+  - {policy: REPRO-6, file: Risk_Pipeline/02_VolatilityModel.py, note: train_test_split with no random_state and no global seed}
+  - {policy: OPS-2, file: Risk_Pipeline/02_VolatilityModel.py, note: print() only, no logging}
+
+  # configuration
+  - {policy: REPRO-6, file: requirements.txt, note: scikit-learn and statsmodels unpinned (partial pinning is not compliant)}
+  - {policy: GIT-8, file: azure-pipelines.yml, note: trigger includes hotfix-var-breach-mar24}
+
+  # committed trader contact data
+  - {policy: PII-4, file: data/trader_contacts.csv, note: committed trader_name/trader_email with real-looking values}
+
+  # naming -- 8-digit date suffixes throughout, plus one snake_case stem
+  - {policy: NAM-5, file: bronze/MarketDataFeed_20240314.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: bronze/TradingPositions_20240314.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: silver/InstrumentReturns_20240314.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: silver/VolatilityScalar_20240314.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: gold/DailyVaRReport_20240314.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: data/trader_contacts.csv, note: stem 'trader_contacts' is not CamelCase}
+
+expect_clean:
+  # the SQL is correct: PascalCase, approved Reporting schema, Fact suffix at
+  # the end, Key suffix on the surrogate primary key
+  - {policy: SQL-10, file: Risk_SQL/CreateVarBreachFact.sql, note: Reporting.VarBreachFact is fully compliant}
+  - {policy: SQL-11, file: Risk_SQL/CreateVarBreachFact.sql, note: PascalCase, BreachDate qualified, VarBreachKey surrogate}
+  # 'TEMP:' appears in the docstrings of 02 and 03. NAM-5's vague-name rule
+  # governs file and folder NAMES, never prose inside a file.
+  - {policy: NAM-5, file: Risk_Pipeline/02_VolatilityModel.py, note: TEMP in a docstring is not a file name}
+  - {policy: NAM-5, file: Risk_Pipeline/03_ComputeVaR.py, note: TEMP in a docstring is not a file name}
+  - {policy: NAM-5, file: Risk_Pipeline/01_IngestMarketData.py, note: 01_ stage prefix is the house convention}
+  # the hotfix branch is named in README prose; the violation belongs to the
+  # CI YAML, and reporting it twice inflates the count
+  - {policy: GIT-8, file: README.md, note: narrative prose, not a governance control file}
+  # 01 is the well-behaved stage
+  - {policy: DQ-1, file: Risk_Pipeline/01_IngestMarketData.py, note: asserts on price positivity and duplicates}
+  - {policy: OPS-2, file: Risk_Pipeline/01_IngestMarketData.py, note: logging configured to logs/ingest.log}
+  - {policy: ARCH-12, file: Risk_Pipeline/01_IngestMarketData.py, note: bronze -> silver with validation}
+  - {policy: ARCH-12, file: Risk_Pipeline/02_VolatilityModel.py, note: silver -> silver, no layer skip}
+  - {policy: SEC-3, file: Risk_Pipeline/01_IngestMarketData.py, note: no credentials}
+  - {policy: SEC-3, file: Risk_Pipeline/02_VolatilityModel.py, note: no credentials}
+  - {policy: PII-4, file: gold/DailyVaRReport_20240314.csv, note: desk/instrument/notional, no direct identifiers}
+
+tolerate:
+  # 02 reads silver/InstrumentReturns, which 01 already validated. Whether a
+  # downstream stage must re-validate is the open DQ-1 scope question.
+  - {policy: DQ-1, file: Risk_Pipeline/02_VolatilityModel.py, note: input validated upstream in 01 -- DQ-1 per-file scope}
+  # 02 shuffles a time series into the train/test split, which is temporal
+  # leakage. DQ-1 names leakage but only as something to CHECK for, and the
+  # file has no checks at all, so this folds into the entry above.
+  - {policy: DQ-1, file: Risk_Pipeline/02_VolatilityModel.py, note: temporal leakage from shuffled split -- policy does not clearly own this}
+  # gold/DailyVaRReport is consumed by the risk-limit monitor, so DM-7 plausibly
+  # applies, but no grain is documented anywhere.
+  - {policy: DM-7, file: Risk_Pipeline/03_ComputeVaR.py, note: gold report for reuse, grain undocumented}

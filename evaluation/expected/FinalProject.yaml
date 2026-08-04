@@ -1,0 +1,61 @@
+# Ground truth for sample_repos/non_compliant/FinalProject
+#
+# The maximally non-compliant repo. Recall signal: almost everything here
+# should fire, so a miss is a clear false negative.
+
+repo: FinalProject
+
+expect_violations:
+  # repository level
+  - {policy: REPO-9, file: null, note: "'FinalProject' does not match {dept}-{resource}-{project}"}
+  - {policy: NAM-5, file: null, note: no README.md at repository root}
+
+  # final_v2_ACTUAL.py -- six distinct violations in one file
+  - {policy: SEC-3, file: final_v2_ACTUAL.py, note: hardcoded prod connection string and sk- api key}
+  - {policy: DQ-1, file: final_v2_ACTUAL.py, note: loads and trains with no validation at all}
+  - {policy: ARCH-12, file: final_v2_ACTUAL.py, note: overwrites bronze source, no silver layer}
+  - {policy: REPRO-6, file: final_v2_ACTUAL.py, note: train_test_split with no random_state}
+  - {policy: OPS-2, file: final_v2_ACTUAL.py, note: print() only, no logging module}
+  - {policy: PII-4, file: final_v2_ACTUAL.py, note: print(customers) exposes name/email/phone}
+  - {policy: NAM-5, file: final_v2_ACTUAL.py, note: vague tokens final/v2/ACTUAL and non-CamelCase stem}
+
+  # Untitled.ipynb
+  - {policy: DQ-1, file: Untitled.ipynb, note: two read_csv calls, no validation}
+  - {policy: OPS-2, file: Untitled.ipynb, note: print() only}
+  - {policy: PII-4, file: Untitled.ipynb, note: prints name/salary/email of top earners}
+  - {policy: NAM-5, file: Untitled.ipynb, note: vague token 'Untitled'}
+
+  # configuration
+  - {policy: REPRO-6, file: requirements.txt, note: all five packages unpinned}
+  - {policy: GIT-8, file: pipeline.yml, note: branches main, my-analysis-branch, hotfix}
+  - {policy: NAM-5, file: pipeline.yml, note: stem 'pipeline' is not CamelCase}
+
+  # SQL
+  - {policy: SQL-10, file: sql/create_tables.sql, note: tbl_ and sp_ prefixes, snake_case table names}
+  - {policy: SQL-11, file: sql/create_tables.sql, note: cryptic columns id, dt, val, vol}
+  - {policy: NAM-5, file: sql/create_tables.sql, note: stem 'create_tables' is not CamelCase}
+
+  # data files
+  - {policy: NAM-5, file: bronze/EthanolMarketRate_20240701.csv, note: 8-digit date suffix; cryptic headers dt/id/val/vol}
+  - {policy: NAM-5, file: data/customers.csv, note: lowercase plural stem, not CamelCase}
+  - {policy: NAM-5, file: "data/ethanol market rate.csv", note: spaces in name, cryptic headers}
+  - {policy: PII-4, file: data/customers.csv, note: committed name/email/phone with real-looking values}
+
+expect_clean:
+  - {policy: SEC-3, file: Untitled.ipynb, note: no credentials in the notebook}
+  - {policy: SEC-3, file: sql/create_tables.sql, note: DDL only, no credentials}
+  - {policy: GIT-8, file: final_v2_ACTUAL.py, note: not a CI/CD or contribution file}
+  - {policy: SQL-10, file: "data/ethanol market rate.csv", note: a CSV header is not a SQL object definition}
+  - {policy: SQL-11, file: "data/ethanol market rate.csv", note: a CSV header is not a SQL column definition}
+  - {policy: SQL-11, file: bronze/EthanolMarketRate_20240701.csv, note: a CSV header is not a SQL column definition}
+
+tolerate:
+  # sp_GetData joins two tables with no documented grain, but a stored
+  # procedure SELECT is not obviously "code that writes a reusable table",
+  # which is what DM-7 scopes itself to.
+  - {policy: DM-7, file: sql/create_tables.sql, note: join with no documented grain; DM-7 applicability to a proc is unclear}
+  # PII-4 on the notebook's source CSV: the notebook prints it (already
+  # counted above), and the file itself is covered by the data/customers.csv
+  # entry. Whether the SQL DDL defining PII columns is itself an exposure is
+  # a separate question the policy does not answer.
+  - {policy: PII-4, file: sql/create_tables.sql, note: DDL declares name/email/phone columns but holds no values}

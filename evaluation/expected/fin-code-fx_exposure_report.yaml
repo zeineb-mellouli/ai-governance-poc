@@ -1,0 +1,45 @@
+# Ground truth for sample_repos/holistic/fin-code-fx_exposure_report
+#
+# The holistic repo: no single file is obviously broken, but the repository as
+# a whole has NO data quality validation anywhere, and its README maps
+# `staging/` to the Silver layer -- so the silver quality gate (ARCH-12 rule 4)
+# is missing across the whole pipeline. Tests whether the audit can see an
+# absence rather than a defect.
+
+repo: fin-code-fx_exposure_report
+
+expect_violations:
+  # nothing validates anything, anywhere in this repo
+  - {policy: DQ-1, file: Treasury_Pipeline/01_IngestFXPositions.py, note: bronze -> staging with no validation of any kind}
+  # staging/ is declared Silver in the README, and is written without a gate
+  - {policy: ARCH-12, file: Treasury_Pipeline/01_IngestFXPositions.py, note: writes the silver-equivalent staging layer with no quality gate}
+  # 8-digit date suffixes
+  - {policy: NAM-5, file: bronze/FXPositions_20240630.csv, note: 8-digit date suffix}
+  - {policy: NAM-5, file: staging/FXPositionsProcessed_20240630.csv, note: 8-digit date suffix}
+
+expect_clean:
+  # the date suffix is OPTIONAL -- a CamelCase name without one is compliant
+  - {policy: NAM-5, file: gold/QuarterlyFXExposureReport.csv, note: no date suffix is fine; suffix is optional}
+  # stage prefixes are the house convention
+  - {policy: NAM-5, file: Treasury_Pipeline/01_IngestFXPositions.py, note: 01_ stage prefix}
+  - {policy: NAM-5, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: 02_ stage prefix}
+  # staging -> gold with a groupby is the correct silver -> gold flow
+  - {policy: ARCH-12, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: staging(silver) -> gold with aggregation}
+  - {policy: SQL-10, file: Treasury_SQL/CreateFXExposureFact.sql, note: Reporting.FXExposureFact correct}
+  - {policy: SQL-11, file: Treasury_SQL/CreateFXExposureFact.sql, note: PascalCase, QuarterEndDate qualified}
+  - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
+  - {policy: REPRO-6, file: requirements.txt, note: all three packages pinned}
+  - {policy: REPRO-6, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: no stochastic operations}
+  - {policy: OPS-2, file: Treasury_Pipeline/01_IngestFXPositions.py, note: logging configured to logs/ingest.log}
+  - {policy: OPS-2, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: logging configured to logs/report.log}
+  - {policy: SEC-3, file: Treasury_Pipeline/01_IngestFXPositions.py, note: no credentials}
+  - {policy: PII-4, file: bronze/FXPositions_20240630.csv, note: position id and notional, no direct identifiers}
+
+tolerate:
+  # 02 reads staging, which nothing validated -- but the missing gate is
+  # already charged to 01 above. Charging it twice double-counts one defect.
+  - {policy: DQ-1, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: same missing gate, already charged to 01}
+  # both outputs are consumed downstream (the board pack, the report step) but
+  # neither documents a grain
+  - {policy: DM-7, file: Treasury_Pipeline/01_IngestFXPositions.py, note: staging output is arguably an intermediate, not a reusable table}
+  - {policy: DM-7, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: gold board-pack report, grain undocumented}
