@@ -110,8 +110,20 @@ policies:
       line -- regardless of access controls on the source data.
     applies_when: >
       Any code that loads data containing potential direct identifiers
-      (name, email, ssn, phone, address) and displays, prints, or logs it.
+      (name, email, ssn, phone, address) and displays, prints, or logs it,
+      and any data file committed to the repository whose columns carry
+      direct identifiers.
     evaluation_hint: >
+      COMMITTED DATA FILES: flag NON_COMPLIANT if a CSV or Parquet file in
+      the repository has a header containing direct-identifier columns --
+      name, full_name, first_name, last_name, email, phone, ssn, address,
+      date_of_birth, or an obvious equivalent. Committed identifier data is
+      an exposure whether or not any code prints it, so this applies even
+      when only the header row is available for inspection. Return
+      NOT_APPLICABLE only when the values are clearly synthetic or masked
+      (obvious placeholders, XXXX redaction, or a documented fixture).
+      Name the offending columns in the evidence.
+
       Check saved notebook cell outputs and any print()/log statements for
       dataframes or values containing identifier-like columns with
       real-looking, non-masked, non-synthetic values visible. Using
@@ -142,36 +154,40 @@ policies:
       the repository root.
     applies_when: "Every repo."
     evaluation_hint: >
-      Apply these rules in order. Flag NON_COMPLIANT only for a clear,
-      specific violation. When in doubt, return COMPLIANT.
+      SCOPE OF THIS CHECK: file and folder NAMES are evaluated
+      deterministically by the auditor before any model call -- do NOT
+      evaluate file names, folder names, date suffixes, vague-name tokens,
+      or README presence yourself. Your only job under NAM-5 is the
+      CSV/PARQUET COLUMN rule below. If the file has no CSV/Parquet header,
+      return NOT_APPLICABLE for NAM-5.
 
-      FILES: Dataset and pipeline file names must be CamelCase, optionally
-      followed by an underscore and a yyyy-MM-dd date suffix.
-      Compliant: EthanolMarketRate_2024-07-01.csv, IngestData.py.
-      Violations: ethanol_market_rate.csv, ingest_data.py, 20240701 date
-      suffix (no hyphens), space in name, name starting with a digit.
+      CSV/PARQUET COLUMNS: headers must be snake_case, and the entity noun
+      must be singular. Judge ONLY the head noun of each column.
+      Compliant: customer_id, source_region, volume_tonnes,
+      days_notice_required, bank_account_id, realized_vol_10d. A plural
+      unit of measure (tonnes, months, days) or a multi-word qualifier is
+      NOT a plural entity name and must never be flagged.
+      Violations: customerID (camelCase), CustomerId (PascalCase),
+      customers (plural entity), customer-id (kebab-case).
+      Also flag cryptic single-token headers with no qualifier: dt, id,
+      val, vol, num, qty, col1, flag. This is NAM-5's job, not SQL-11's.
 
-      FOLDERS: Pipeline and feature folders use <Project>_<Feature> with a
-      single underscore (e.g. Risk_Pipeline, Treasury_SQL,
-      Collateral_Pipeline). This IS the correct pattern -- never flag it.
-      Medallion layer folders (bronze, silver, gold) are exempt by
-      convention. The repository root folder is governed by REPO-9 only.
+      NEVER suggest CamelCase, PascalCase, or kebab-case for a CSV column.
+      snake_case is the required form for data-file columns; proposing
+      anything else is itself a NAM-5 violation. (PascalCase applies to SQL
+      columns only -- that is SQL-11, a different policy on different files.)
 
-      VAGUE NAMES: Flag Untitled, final, copy, v2, ACTUAL, temp as
-      NON_COMPLIANT anywhere in the file tree.
-
-      CSV/PARQUET COLUMNS: Headers must be snake_case and singular.
-      Violations: customerID (camelCase), customers (plural).
-
-      README: A README.md must exist at the repository root; flag missing.
-
-      EXEMPT from CamelCase: azure-pipelines.yml, .github/workflows/*.yml,
-      Dockerfile, Makefile, .gitignore, requirements.txt, setup.cfg,
-      pyproject.toml, conftest.py, __init__.py, README.md.
-
-      RENAME SUGGESTIONS: Always suggest the CamelCase_yyyy-MM-dd.csv
-      target. Never suggest snake_case, kebab-case, or all-lowercase --
-      those are violations themselves.
+      For reference only, the rules the deterministic pass applies to names
+      (stated here so the report text stays consistent -- do not re-evaluate
+      them): dataset and pipeline file stems are CamelCase, optionally
+      suffixed with _yyyy-MM-dd; an 8-digit suffix such as _20240701 is
+      always a violation, but having no date suffix at all is fine; a
+      two-digit pipeline stage prefix (01_IngestData.py) is the house
+      convention and is compliant; the tokens Untitled, final, copy, v2,
+      ACTUAL, temp are violations when they appear in a NAME, never when
+      they appear in file content such as a docstring; folders use
+      <Project>_<Feature> (Risk_Pipeline, Treasury_SQL); bronze/silver/gold
+      and logs/data are exempt; a root README.md is required.
     severity: LOW
 
   - policy_id: REPRO-6
@@ -185,7 +201,11 @@ policies:
       analysis with a stochastic component.
     evaluation_hint: >
       Check for: (1) a requirements.txt, environment.yml, or pyproject.toml
-      with pinned, not floating/unversioned, package versions; (2) random
+      in which EVERY package is pinned to a specific version. A file that
+      pins some packages while leaving others floating is NON_COMPLIANT --
+      partial pinning is not partial credit. Name the unpinned packages in
+      the evidence. If your evidence observes that any package is unpinned,
+      the status MUST be NON_COMPLIANT; (2) random
       seeds explicitly set for any stochastic step (np.random.seed,
       random.seed, random_state= in sklearn, or framework equivalents);
       (3) raw data read-only or copied rather than transformed in place.
@@ -269,6 +289,20 @@ policies:
       (5) Gold aggregation -- flag as NON_COMPLIANT if a gold/reporting
       path receives raw, un-aggregated rows directly from bronze without
       any grouping, aggregation, or enrichment step.
+
+      LAYER ALIASES: treat all of these as the silver/cleansed layer,
+      whatever the folder is called -- silver, cleansed, curated, refined,
+      staging, validated, processed -- including when a README maps a
+      folder to a medallion layer (e.g. "`staging/` | Silver").
+
+      SCOPE LIMIT ON RULES (2) AND (5): these fire ONLY on a direct
+      bronze/raw -> gold/reporting write. A silver -> gold write is the
+      correct flow and must NEVER be flagged under ARCH-12, even when it
+      performs no validation and no aggregation. Missing validation before
+      a gold write is DQ-1's concern, not ARCH-12's. There is no
+      "quality gate before gold" rule -- the only quality gate in this
+      policy is rule (4), on writes into the silver layer.
+
       Return NOT_APPLICABLE if the code has no references to tiered storage
       paths or schemas, OR if the file is a standalone SQL DDL file whose
       content is limited to schema definitions (CREATE TABLE, CREATE INDEX,
@@ -308,6 +342,11 @@ policies:
       placeholder equivalent to \d+ -- do not flag it as a non-compliant
       branch name. Only flag concrete branch names found in CI/CD YAML
       trigger/pr/branches sections or in git log output.
+      A branch name mentioned in narrative prose in a README (e.g. a note
+      explaining that a hotfix branch was cut during an incident) is
+      documentation, not a governance control: return NOT_APPLICABLE for
+      README.md. If that branch also appears in a CI/CD YAML branch list,
+      the YAML file is where the violation is reported -- once, not twice.
       SCOPE: only evaluate files that are CI/CD pipeline configurations
       (azure-pipelines.yml, .github/workflows/*.yml), PR templates
       (PULL_REQUEST_TEMPLATE.md), or developer contribution guides
@@ -410,6 +449,12 @@ policies:
       notebook code that defines DataFrame column names intended for a
       persistent SQL table or data model.
     evaluation_hint: >
+      Evaluate ONLY .sql files and SQL DDL embedded in .py/.ipynb code. A
+      .csv or .parquet header row is NEVER a SQL column definition: return
+      NOT_APPLICABLE for data files even when their headers look poor.
+      Cryptic or badly-cased CSV headers are NAM-5's concern, and NAM-5
+      requires snake_case for them -- flagging a CSV header here would
+      contradict it.
       Scan CREATE TABLE statements, ALTER TABLE ADD COLUMN, and any
       DataFrame.columns / DataFrame.rename() assignments destined for SQL for:
       (1) column names not in PascalCase in SQL contexts -- flag snake_case

@@ -43,9 +43,45 @@ REPO_NAME_PATTERN = re.compile(r"^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z]
 # Excluding them from all LLM passes (per-file and holistic) prevents the LLM
 # from re-evaluating them on individual file content and producing a verdict
 # that contradicts the authoritative deterministic result.
+#
+# NAM-5 is deliberately NOT in this set: its *naming* rules are decided
+# deterministically by _evaluate_file_names, but its CSV/Parquet column rule
+# needs judgement about singular entity nouns and stays with the LLM. The
+# policy's evaluation_hint tells the model to skip the naming half, and
+# _drop_llm_name_duplicates removes any name verdict that slips through.
 DETERMINISTIC_ONLY_POLICIES = frozenset({"REPO-9"})
 
 RRF_K = 60
+
+# --- NAM-5 deterministic naming grammar -------------------------------------
+# These rules are regex-decidable, so leaving them to the LLM produced
+# inconsistent verdicts on byte-identical inputs (identical date suffixes
+# flagged in one file and passed in its neighbour). They are evaluated here
+# once, with confidence 1.0, exactly as REPO-9 already is.
+
+NAME_CHECKED_SUFFIXES = frozenset({".csv", ".parquet", ".py", ".ipynb", ".sql", ".yml", ".yaml"})
+
+EXEMPT_FILENAMES = frozenset({
+    "azure-pipelines.yml", "dockerfile", "makefile", ".gitignore",
+    "requirements.txt", "setup.cfg", "pyproject.toml", "conftest.py",
+    "__init__.py", "readme.md", "license", ".env.example", ".env.template",
+    ".env.sample",
+})
+
+EXEMPT_PATH_PREFIXES = (".github/workflows/", ".github/agents/", ".github/prompts/", ".specify/", ".claude/")
+
+VAGUE_NAME_TOKENS = ("untitled", "final", "copy", "v2", "actual", "temp")
+
+STAGE_PREFIX_RE = re.compile(r"^\d{2}_")
+GOOD_DATE_SUFFIX_RE = re.compile(r"_\d{4}-\d{2}-\d{2}$")
+BAD_DATE_SUFFIX_RE = re.compile(r"_\d{8}$")
+CAMEL_CASE_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
+# A vague token counts only as a whole word or a CamelCase segment, so
+# "finalise" or "Temperature" do not trip it.
+VAGUE_TOKEN_RES = {
+    token: re.compile(rf"(?:^|[^A-Za-z]){token}(?:$|[^A-Za-z])", re.IGNORECASE)
+    for token in VAGUE_NAME_TOKENS
+}
 
 SYSTEM_PROMPT = """You are a compliance auditor for an organization's engineering governance system.
 
@@ -124,6 +160,134 @@ def _rank_policies(
         fused.append((pid, score))
     fused.sort(key=lambda x: x[1], reverse=True)
     return fused
+
+
+def _name_violations(rel_path: str) -> list[str]:
+    """Return NAM-5 naming violations for one repo-relative path, most specific first."""
+    path = Path(rel_path)
+    filename = path.name
+    reasons: list[str] = []
+
+    # Vague tokens are checked on every path segment, including folders, and
+    # regardless of extension -- a temp/ folder matters as much as a temp file.
+    for segment in path.parts:
+        for token, pattern in VAGUE_TOKEN_RES.items():
+            if pattern.search(Path(segment).stem if segment == filename else segment):
+                reasons.append(f"path segment '{segment}' contains the vague name token '{token}'")
+
+    if any(rel_path.startswith(prefix) for prefix in EXEMPT_PATH_PREFIXES):
+        return reasons
+    if filename.lower() in EXEMPT_FILENAMES:
+        return reasons
+    if path.suffix.lower() not in NAME_CHECKED_SUFFIXES:
+        return reasons
+    if path.suffix.lower() == ".py" and (filename.startswith("test_") or filename.endswith("_test.py")):
+        return reasons  # pytest discovery convention owns these names
+
+    if " " in filename:
+        reasons.append(f"file name '{filename}' contains a space")
+
+    core = path.stem
+    core = STAGE_PREFIX_RE.sub("", core)  # 01_IngestData.py -- the house ordering convention
+
+    bad_date = BAD_DATE_SUFFIX_RE.search(core)
+    if bad_date:
+        reasons.append(
+            f"file name '{filename}' ends in an 8-digit date suffix "
+            f"'{core[bad_date.start() + 1:]}'; the required format is _yyyy-MM-dd"
+        )
+        core = core[: bad_date.start()]
+    else:
+        good_date = GOOD_DATE_SUFFIX_RE.search(core)
+        if good_date:
+            core = core[: good_date.start()]
+
+    if core and not CAMEL_CASE_RE.match(core):
+        reasons.append(f"file name stem '{core}' is not CamelCase")
+
+    return reasons
+
+
+def _evaluate_file_names(snapshot: RepositorySnapshot) -> list[Finding]:
+    """Deterministic NAM-5 naming verdicts -- one finding per file, compliant or not."""
+    findings = []
+    for file in snapshot.files:
+        reasons = _name_violations(file.path)
+        findings.append(Finding(
+            policy_id="NAM-5",
+            title="File and folder naming convention",
+            severity="LOW",
+            file_path=file.path,
+            status=FindingStatus.NON_COMPLIANT if reasons else FindingStatus.COMPLIANT,
+            confidence_score=1.0,
+            evidence="; ".join(reasons) if reasons else f"File name '{file.path}' satisfies the naming grammar.",
+            retrieval_chunk_id="NAM-5",
+            retrieval_score=1.0,
+        ))
+    return findings
+
+
+def _drop_llm_name_duplicates(deterministic: list[Finding], llm_findings: list[Finding]) -> list[Finding]:
+    """Drop LLM NAM-5 verdicts for paths the deterministic naming pass already ruled on.
+
+    The naming grammar is authoritative; the LLM's remaining NAM-5 job is the
+    CSV/Parquet column rule, which it reports against the same path. Only a
+    verdict whose evidence is about columns survives.
+    """
+    decided = {f.file_path for f in deterministic}
+    kept = []
+    for finding in llm_findings:
+        if finding.policy_id != "NAM-5" or finding.file_path not in decided:
+            kept.append(finding)
+            continue
+        if finding.status == FindingStatus.NON_COMPLIANT and re.search(
+            r"column|header|snake_case|plural|singular", finding.evidence, re.IGNORECASE
+        ):
+            kept.append(finding)
+    return kept
+
+
+# --- verdict self-consistency guard -----------------------------------------
+# Both directions were observed in the first full run: a NON_COMPLIANT verdict
+# whose evidence argued itself out of the finding (and whose remediation was a
+# no-op), and a COMPLIANT verdict whose evidence conceded unpinned packages.
+# The system prompt asks for consistency; this enforces it.
+
+_EVIDENCE_NEGATES = re.compile(
+    r"no violation|no clear violation|no naming violation|no strong violation|"
+    r"already compliant|no change (?:is |was )?needed|does not violate|no issue",
+    re.IGNORECASE,
+)
+
+# Visible deliberation ("...matches a column name? No; the clear issue is...")
+# means the model never settled -- that is a review case, not a finding.
+_EVIDENCE_DELIBERATES = re.compile(r"\?\s*(?:no|actually|wait)\b", re.IGNORECASE)
+
+# Terms that must never appear in evidence supporting a COMPLIANT verdict.
+_EVIDENCE_CONCEDES = re.compile(
+    r"\bunpinned\b|\bnot pinned\b|\bunversioned\b|"
+    r"(?:however|but|although|though|except|remaining|while)\b[^.]{0,120}?"
+    r"\b(?:missing|absent|violat\w*|hardcoded|floating)\b",
+    re.IGNORECASE,
+)
+
+
+def _apply_consistency_guard(status: FindingStatus, evidence: str) -> tuple[FindingStatus, str]:
+    """Reconcile a verdict with what its own evidence actually says."""
+    if status == FindingStatus.NON_COMPLIANT:
+        if _EVIDENCE_NEGATES.search(evidence):
+            return FindingStatus.COMPLIANT, (
+                f"{evidence}  [auto-corrected to COMPLIANT: evidence states no violation]"
+            )
+        if _EVIDENCE_DELIBERATES.search(evidence):
+            return FindingStatus.NEEDS_REVIEW, (
+                f"{evidence}  [routed to review: evidence is unresolved]"
+            )
+    elif status == FindingStatus.COMPLIANT and _EVIDENCE_CONCEDES.search(evidence):
+        return FindingStatus.NEEDS_REVIEW, (
+            f"{evidence}  [routed to review: evidence concedes a defect while passing the check]"
+        )
+    return status, evidence
 
 
 def _evaluate_repo_level(snapshot: RepositorySnapshot) -> list[Finding]:
@@ -215,6 +379,7 @@ def _evaluate_file(
             status = FindingStatus(raw_status)
         except ValueError:
             continue  # unknown status value — skip rather than crash the whole file
+        status, evidence = _apply_consistency_guard(status, verdict["evidence"])
         findings.append(Finding(
             policy_id=pid,
             title=policy["title"],
@@ -222,7 +387,7 @@ def _evaluate_file(
             file_path=file.path,
             status=status,
             confidence_score=float(verdict["confidence"]),
-            evidence=verdict["evidence"],
+            evidence=evidence,
             retrieval_chunk_id=pid,
             retrieval_score=round(score_by_id.get(pid, 0.0), 6),
         ))
@@ -347,6 +512,7 @@ def _evaluate_repo_holistic(
             status = FindingStatus(raw_status)
         except ValueError:
             continue
+        status, evidence = _apply_consistency_guard(status, verdict["evidence"])
         findings.append(Finding(
             policy_id=pid,
             title=policy["title"],
@@ -354,7 +520,7 @@ def _evaluate_repo_holistic(
             file_path=None,
             status=status,
             confidence_score=float(verdict["confidence"]),
-            evidence=verdict["evidence"],
+            evidence=evidence,
             retrieval_chunk_id=pid,
             retrieval_score=round(score_by_id.get(pid, 0.0), 6),
         ))
@@ -384,9 +550,13 @@ def audit(snapshot: RepositorySnapshot, client: OpenAI | None = None) -> tuple[l
     findings: list[Finding] = list(_evaluate_repo_level(snapshot))
     errors: list[str] = []
 
+    name_findings = _evaluate_file_names(snapshot)
+    findings.extend(name_findings)
+
     for file in snapshot.files:
         try:
-            findings.extend(_evaluate_file(file, collection, client, policies_by_id))
+            file_findings = _evaluate_file(file, collection, client, policies_by_id)
+            findings.extend(_drop_llm_name_duplicates(name_findings, file_findings))
         except Exception as exc:  # noqa: BLE001 - a single bad file must not abort the audit
             errors.append(f"Auditor Agent failed on {file.path}: {exc}")
 
