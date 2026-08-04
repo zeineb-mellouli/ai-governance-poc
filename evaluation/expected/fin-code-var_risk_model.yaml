@@ -24,6 +24,10 @@ expect_violations:
 
   # committed trader contact data
   - {policy: PII-4, file: data/trader_contacts.csv, note: committed trader_name/trader_email with real-looking values}
+  # repo-level: CreateVarBreachFact.sql explains WHY the table exists ("persist
+  # breaches for the audit trail") but never states what one row is. The
+  # discriminating case against collateral/credit/fx, which all state a grain.
+  - {policy: DM-7, file: null, note: "gold/DailyVaRReport has no grain statement; the DDL gives purpose, not grain"}
 
   # naming -- 8-digit date suffixes throughout, plus one snake_case stem
   - {policy: NAM-5, file: bronze/MarketDataFeed_20240314.csv, note: 8-digit date suffix}
@@ -63,6 +67,3 @@ tolerate:
   # leakage. DQ-1 names leakage but only as something to CHECK for, and the
   # file has no checks at all, so this folds into the entry above.
   - {policy: DQ-1, file: Risk_Pipeline/02_VolatilityModel.py, note: temporal leakage from shuffled split -- policy does not clearly own this}
-  # gold/DailyVaRReport is consumed by the risk-limit monitor, so DM-7 plausibly
-  # applies, but no grain is documented anywhere.
-  - {policy: DM-7, file: Risk_Pipeline/03_ComputeVaR.py, note: gold report for reuse, grain undocumented}

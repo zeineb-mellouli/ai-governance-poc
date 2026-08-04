@@ -43,9 +43,9 @@ expect_clean:
   - {policy: SQL-10, file: MarketRate_SQL/CreateProductDim.sql, note: Reporting.ProductDim}
   - {policy: SQL-11, file: MarketRate_SQL/CreateEthanolMarketRateFact.sql, note: PascalCase, qualified date columns}
   - {policy: SQL-11, file: MarketRate_SQL/CreateProductDim.sql, note: ProductKey surrogate, EffectiveDate qualified}
-  # grain and key documented in the DDL header comments and in both docstrings
-  - {policy: DM-7, file: MarketRate_SQL/CreateEthanolMarketRateFact.sql, note: grain and key documented in header}
-  - {policy: DM-7, file: MarketRate_Pipeline/02_TransformData.py, note: grain documented in docstring}
+  # DM-7 is repo-level: grain is stated in both DDL headers ("One row per
+  # product per market date") and in 02_TransformData.py's docstring
+  - {policy: DM-7, file: null, note: grain documented in both DDL headers and the transform docstring}
   # naming: stage prefixes, CamelCase stems, correct yyyy-MM-dd suffixes,
   # snake_case singular CSV headers (volume_tonnes is a unit, not a plural entity)
   - {policy: NAM-5, file: MarketRate_Pipeline/01_IngestData.py, note: 01_ stage prefix is the house convention}

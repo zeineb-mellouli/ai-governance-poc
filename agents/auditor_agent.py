@@ -51,6 +51,14 @@ REPO_NAME_PATTERN = re.compile(r"^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z]
 # _drop_llm_name_duplicates removes any name verdict that slips through.
 DETERMINISTIC_ONLY_POLICIES = frozenset({"REPO-9"})
 
+# Policies that can only be answered by looking at the whole repository, so
+# they are withheld from the per-file pass and evaluated once in
+# _evaluate_repo_holistic. DM-7 asks whether a gold output's grain is
+# documented *anywhere* in the repo -- the module that writes the data and the
+# DDL that documents it are routinely different files, so a per-file verdict is
+# structurally unable to answer it and reported false positives when it tried.
+HOLISTIC_ONLY_POLICIES = frozenset({"DM-7"})
+
 RRF_K = 60
 
 # --- NAM-5 deterministic naming grammar -------------------------------------
@@ -340,7 +348,7 @@ def _evaluate_file(
 
     candidate_blocks = []
     for pid, _score in ranked:
-        if pid in DETERMINISTIC_ONLY_POLICIES:
+        if pid in DETERMINISTIC_ONLY_POLICIES or pid in HOLISTIC_ONLY_POLICIES:
             continue
         p = policies_by_id[pid]
         candidate_blocks.append(
@@ -370,6 +378,8 @@ def _evaluate_file(
         pid = verdict["policy_id"]
         if pid not in policies_by_id:
             continue
+        if pid in DETERMINISTIC_ONLY_POLICIES or pid in HOLISTIC_ONLY_POLICIES:
+            continue  # withheld from this pass — a verdict here is unsolicited
         policy = policies_by_id[pid]
         # Normalize common LLM typo: NON_APPLICABLE → NOT_APPLICABLE
         raw_status = verdict["status"]
@@ -419,6 +429,11 @@ file anywhere documents something that should be documented). Do NOT report
 a violation that is fully visible within a single file's own content -- that
 is handled by a separate per-file review, and reporting it here would
 duplicate it.
+
+EXCEPTION: a candidate policy marked [WHOLE-REPOSITORY ONLY] below is withheld
+from the per-file review entirely and is evaluated only here. Always return a
+verdict for those, even when the evidence happens to sit in a single file --
+there is no other pass that will report them.
 
 For each such policy, decide:
 - status: "COMPLIANT" or "NON_COMPLIANT"
@@ -477,8 +492,9 @@ def _evaluate_repo_holistic(
         if pid in DETERMINISTIC_ONLY_POLICIES:
             continue
         p = policies_by_id[pid]
+        marker = " [WHOLE-REPOSITORY ONLY]" if pid in HOLISTIC_ONLY_POLICIES else ""
         candidate_blocks.append(
-            f"- policy_id: {pid}\n  title: {p['title']}\n  severity: {p['severity']}\n"
+            f"- policy_id: {pid}{marker}\n  title: {p['title']}\n  severity: {p['severity']}\n"
             f"  evaluation_hint: {p['evaluation_hint'].strip()}"
         )
 

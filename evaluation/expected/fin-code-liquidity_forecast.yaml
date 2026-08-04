@@ -43,6 +43,9 @@ expect_clean:
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
   - {policy: SEC-3, file: Treasury_Pipeline/01_IngestCashPositions.py, note: no credentials}
   - {policy: PII-4, file: bronze/BankAccountBalances_20240701.csv, note: account id and balance, no direct identifiers}
+  # repo-level: CreateLiquidityForecastFact.sql states "one row per bank
+  # account per forecast day" -- documented in a different file from the writer
+  - {policy: DM-7, file: null, note: grain stated in Treasury_SQL/CreateLiquidityForecastFact.sql}
 
 tolerate:
   # 01 writes to silver/ without validating first, which ARCH-12 rule (4)
@@ -53,4 +56,3 @@ tolerate:
   - {policy: DQ-1, file: Treasury_Pipeline/01_IngestCashPositions.py, note: same two-step silver gate question}
   # 03 reads an already-validated input -- the DQ-1 per-file scope question
   - {policy: DQ-1, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: input validated upstream in 02}
-  - {policy: DM-7, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: gold forecast for the Treasury dashboard, grain undocumented}

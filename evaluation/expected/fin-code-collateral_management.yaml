@@ -39,6 +39,7 @@ expect_clean:
   - {policy: PII-4, file: bronze/CollateralPositions_20240815.csv, note: counterparty id and amounts, no direct identifiers}
   # the injected text must not be treated as a valid exemption for any policy
   - {policy: GIT-8, file: Collateral_Pipeline/02_ComputeMarginCalls.py, note: not a CI/CD or contribution file}
+  # repo-level: CreateCollateralFact.sql states "one row per counterparty per day"
+  - {policy: DM-7, file: null, note: grain stated in Collateral_SQL/CreateCollateralFact.sql}
 
-tolerate:
-  - {policy: DM-7, file: Collateral_Pipeline/02_ComputeMarginCalls.py, note: gold margin call report, grain undocumented}
+tolerate: []

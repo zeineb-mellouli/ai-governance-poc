@@ -17,8 +17,9 @@ expect_violations:
 expect_clean:
   # no data lake, no medallion layers -- ARCH-12 must not be force-fit
   - {policy: ARCH-12, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: no tiered storage anywhere}
-  # a one-off alert list, not a shared table
-  - {policy: DM-7, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: single-stage utility output, not a reusable table}
+  # repo-level: no gold layer and no Dim/Fact table anywhere, so DM-7 is
+  # NOT_APPLICABLE -- the case that proves it isn't force-fit
+  - {policy: DM-7, file: null, note: no gold output and no Dim/Fact table; must return NOT_APPLICABLE}
   # validation is present
   - {policy: DQ-1, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: asserts on null deadline_date and duplicate filing_id}
   - {policy: OPS-2, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: logging configured to logs/deadline_check.log}

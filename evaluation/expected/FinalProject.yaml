@@ -40,6 +40,8 @@ expect_violations:
   - {policy: NAM-5, file: data/customers.csv, note: lowercase plural stem, not CamelCase}
   - {policy: NAM-5, file: "data/ethanol market rate.csv", note: spaces in name, cryptic headers}
   - {policy: PII-4, file: data/customers.csv, note: committed name/email/phone with real-looking values}
+  # repo-level: no grain documented for any output, in any file
+  - {policy: DM-7, file: null, note: no grain statement anywhere; create_tables.sql comments describe bad naming, not row meaning}
 
 expect_clean:
   - {policy: SEC-3, file: Untitled.ipynb, note: no credentials in the notebook}
@@ -50,10 +52,6 @@ expect_clean:
   - {policy: SQL-11, file: bronze/EthanolMarketRate_20240701.csv, note: a CSV header is not a SQL column definition}
 
 tolerate:
-  # sp_GetData joins two tables with no documented grain, but a stored
-  # procedure SELECT is not obviously "code that writes a reusable table",
-  # which is what DM-7 scopes itself to.
-  - {policy: DM-7, file: sql/create_tables.sql, note: join with no documented grain; DM-7 applicability to a proc is unclear}
   # PII-4 on the notebook's source CSV: the notebook prints it (already
   # counted above), and the file itself is covered by the data/customers.csv
   # entry. Whether the SQL DDL defining PII columns is itself an exposure is

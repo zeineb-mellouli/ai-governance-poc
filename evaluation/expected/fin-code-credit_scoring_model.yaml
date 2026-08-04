@@ -34,6 +34,8 @@ expect_clean:
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
   # application_id is a synthetic key, not a direct identifier
   - {policy: PII-4, file: bronze/CreditApplications_20240901.csv, note: application id and financials, no direct identifiers}
+  # repo-level: CreateCreditScoreFact.sql states "one row per credit application"
+  - {policy: DM-7, file: null, note: grain stated in CreditScoring_SQL/CreateCreditScoreFact.sql}
 
 tolerate:
   # 02 reads the already-validated silver file -- the DQ-1 per-file scope question
@@ -43,4 +45,3 @@ tolerate:
   # accuracy=1.000. This is target leakage, but DQ-1 only asks for leakage
   # CHECKS and the file has no checks at all, so it folds into the entry above.
   - {policy: DQ-1, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: target leakage -- label written to gold, scored on training rows}
-  - {policy: DM-7, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: gold scores for underwriting, grain undocumented}

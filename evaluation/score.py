@@ -78,9 +78,19 @@ def _load_labels(path: Path) -> dict:
 
 
 def _label_keys(labels: dict, bucket: str) -> dict[tuple[str, str], str]:
-    out = {}
+    """Collapse a bucket to {(policy, file): note}.
+
+    Two entries can share a key when one file carries two distinct concerns
+    under one policy (e.g. DQ-1 on a training script for both "validated
+    upstream" and "target leakage"). A finding can only match once, so the
+    keys merge -- but the notes are joined rather than overwritten, so the
+    second concern is not silently lost from the report.
+    """
+    out: dict[tuple[str, str], str] = {}
     for entry in labels.get(bucket) or []:
-        out[_key(entry["policy"], entry.get("file"))] = entry.get("note", "")
+        key = _key(entry["policy"], entry.get("file"))
+        note = entry.get("note", "")
+        out[key] = f"{out[key]}; {note}" if key in out else note
     return out
 
 

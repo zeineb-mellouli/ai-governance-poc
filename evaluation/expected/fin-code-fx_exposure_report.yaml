@@ -34,12 +34,11 @@ expect_clean:
   - {policy: OPS-2, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: logging configured to logs/report.log}
   - {policy: SEC-3, file: Treasury_Pipeline/01_IngestFXPositions.py, note: no credentials}
   - {policy: PII-4, file: bronze/FXPositions_20240630.csv, note: position id and notional, no direct identifiers}
+  # repo-level: CreateFXExposureFact.sql states "one row per currency per
+  # quarter-end", which matches the gold report's grain exactly
+  - {policy: DM-7, file: null, note: grain stated in Treasury_SQL/CreateFXExposureFact.sql}
 
 tolerate:
   # 02 reads staging, which nothing validated -- but the missing gate is
   # already charged to 01 above. Charging it twice double-counts one defect.
   - {policy: DQ-1, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: same missing gate, already charged to 01}
-  # both outputs are consumed downstream (the board pack, the report step) but
-  # neither documents a grain
-  - {policy: DM-7, file: Treasury_Pipeline/01_IngestFXPositions.py, note: staging output is arguably an intermediate, not a reusable table}
-  - {policy: DM-7, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: gold board-pack report, grain undocumented}
