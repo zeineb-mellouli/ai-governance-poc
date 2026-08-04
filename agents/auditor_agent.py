@@ -121,7 +121,7 @@ CRITICAL CONSISTENCY RULE: If your evidence says there is no violation, or that 
 code is already compliant, you MUST return status "COMPLIANT" -- never "NON_COMPLIANT".
 A finding whose evidence contains phrases like "no violation", "already compliant",
 "no change needed", "no strong violation found", or "not applicable" but whose status
-is NON_COMPLIANT is always wrong. When in doubt, return COMPLIANT or omit the policy.
+is NON_COMPLIANT is always wrong.
 
 Respond with a single JSON object: {"verdicts": [{"policy_id": "...", "status": "...", "confidence": 0.0, "evidence": "..."}]}
 """

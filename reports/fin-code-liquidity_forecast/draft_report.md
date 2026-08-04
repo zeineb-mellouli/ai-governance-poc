@@ -1,30 +1,31 @@
 # Compliance Report — fin-code-liquidity_forecast
 
-Run at: 2026-08-03T13:26:41.053636+00:00
+Run at: 2026-08-04T12:19:07.363600+00:00
 Repository path: C:\Users\CHMELLOULIZ\OneDrive - Tetra Pak\Desktop\ai-governance-poc\sample_repos\edge_cases\fin-code-liquidity_forecast
 
 ## Summary
 
-- Total findings evaluated: 105
-- COMPLIANT: 44
-- NOT_APPLICABLE: 54
-- NON_COMPLIANT: 7
+- Total findings evaluated: 90
+- COMPLIANT: 37
+- NEEDS_REVIEW: 6
+- NOT_APPLICABLE: 42
+- NON_COMPLIANT: 5
 
 ## Non-compliant findings
 
 ### DQ-1 · Data quality validation present [HIGH]
 
 **Location:** Treasury_Pipeline/01_IngestCashPositions.py
-**Confidence:** 0.93  |  **Risk score:** 2.79
-**Evidence:** Data is loaded and written onward with no validation checks before use: CSVs are read with "pd.read_csv(...)" and immediately saved to silver via "to_csv(...)"; no assert/filter/quality validation appears.
+**Confidence:** 0.95  |  **Risk score:** 2.85
+**Evidence:** Data is loaded and written onward with no validation checks in between; after `pd.read_csv(...)` the code सीधे writes to silver via `balances.to_csv(...)` and `movements.to_csv(...)` without any assert/filter/quality validation.
 
-**Suggested fix:** Add a minimal data-quality validation step to reject empty or null-containing inputs before writing to silver.
+**Suggested fix:** Add explicit data quality checks after loading the CSVs and before writing them to silver.
 
 ```
 python - <<'PY'
 from pathlib import Path
-p = Path('Treasury_Pipeline/01_IngestCashPositions.py')
-s = p.read_text()
+path = Path('Treasury_Pipeline/01_IngestCashPositions.py')
+text = path.read_text()
 old = '''        balances = pd.read_csv("bronze/BankAccountBalances_20240701.csv")
         movements = pd.read_csv("bronze/DailyCashMovements_2024-07-01.csv")
 
@@ -34,108 +35,136 @@ old = '''        balances = pd.read_csv("bronze/BankAccountBalances_20240701.csv
 new = '''        balances = pd.read_csv("bronze/BankAccountBalances_20240701.csv")
         movements = pd.read_csv("bronze/DailyCashMovements_2024-07-01.csv")
 
-        if balances.empty or movements.empty:
-            raise ValueError("Input data must not be empty")
-        if balances.isnull().any().any() or movements.isnull().any().any():
-            raise ValueError("Input data contains null values")
+        assert not balances.empty, "balances must not be empty"
+        assert not movements.empty, "movements must not be empty"
+        assert balances.notna().all().all(), "balances contains null values"
+        assert movements.notna().all().all(), "movements contains null values"
+        assert len(balances) == len(balances.drop_duplicates()), "balances contains duplicate rows"
+        assert len(movements) == len(movements.drop_duplicates()), "movements contains duplicate rows"
 
         balances.to_csv("silver/BankAccountBalances_20240701.csv", index=False)
         movements.to_csv("silver/DailyCashMovements_2024-07-01.csv", index=False)
 '''
-p.write_text(s.replace(old, new))
+if old not in text:
+    raise SystemExit('target block not found')
+path.write_text(text.replace(old, new))
 PY
 ```
 
 ### DQ-1 · Data quality validation present [HIGH]
 
 **Location:** Treasury_Pipeline/03_ForecastLiquidity.py
-**Confidence:** 0.93  |  **Risk score:** 2.79
-**Evidence:** Data is loaded and used with no validation checks before modeling or writing output; after `pd.read_csv(...)` there are no asserts, null/duplicate/range checks, or other validation logic.
+**Confidence:** 0.91  |  **Risk score:** 2.73
+**Evidence:** Data is loaded from `pd.read_csv("silver/DailyCashMovements_validated_20240701.csv")` and then used for modeling/forecasting, but the file contains no explicit validation checks such as asserts, null/duplicate/range checks, or validation library calls.
 
-**Suggested fix:** Add basic input validation immediately after loading the CSV to reject empty, null, duplicate, or non-numeric amount data before training and output generation.
+**Suggested fix:** Add explicit validation checks after loading the CSV and before modeling to verify required columns, non-null values, and no duplicate rows.
 
 ```
 python - <<'PY'
 from pathlib import Path
 path = Path('Treasury_Pipeline/03_ForecastLiquidity.py')
 text = path.read_text()
-old = '    movements = pd.read_csv("silver/DailyCashMovements_validated_20240701.csv")\n\n    X = movements[["amount"]].shift(1).fillna(0).values\n'
-new = '    movements = pd.read_csv("silver/DailyCashMovements_validated_20240701.csv")\n    assert not movements.empty, "movements dataset is empty"\n    required_cols = {"bank_account_id", "amount"}\n    missing = required_cols - set(movements.columns)\n    assert not missing, f"missing required columns: {missing}"\n    assert movements["bank_account_id"].notna().all(), "bank_account_id contains nulls"\n    assert movements["amount"].notna().all(), "amount contains nulls"\n    assert pd.api.types.is_numeric_dtype(movements["amount"]), "amount must be numeric"\n    assert not movements.duplicated().any(), "duplicate rows found"\n\n    X = movements[["amount"]].shift(1).fillna(0).values\n'
+old = '''    movements = pd.read_csv("silver/DailyCashMovements_validated_20240701.csv")
+
+    X = movements[["amount"]].shift(1).fillna(0).values
+'''
+new = '''    movements = pd.read_csv("silver/DailyCashMovements_validated_20240701.csv")
+
+    required_columns = {"bank_account_id", "amount"}
+    missing_columns = required_columns - set(movements.columns)
+    assert not missing_columns, f"Missing required columns: {sorted(missing_columns)}"
+    assert movements["amount"].notna().all(), "amount contains null values"
+    assert movements["bank_account_id"].notna().all(), "bank_account_id contains null values"
+    assert not movements.duplicated().any(), "Duplicate rows found in movements"
+
+    X = movements[["amount"]].shift(1).fillna(0).values
+'''
 if old not in text:
     raise SystemExit('target snippet not found')
 path.write_text(text.replace(old, new))
 PY
 ```
 
-### DM-7 · Star schema / shared output table design [MEDIUM]
+### SQL-10 · SQL table and object naming convention [MEDIUM]
 
-**Location:** Treasury_Pipeline/03_ForecastLiquidity.py
-**Confidence:** 0.84  |  **Risk score:** 1.68
-**Evidence:** The file writes a reusable gold output `gold/LiquidityForecast_20240701.csv`, but there is no documentation of the row grain/primary key or what one row represents.
+**Location:** Treasury_SQL/CreateCounterpartyDim.sql
+**Confidence:** 0.99  |  **Risk score:** 1.98
+**Evidence:** CREATE TABLE Reporting.CounterpartyDim (...) uses a data model table name without a forbidden prefix, but the column name `Id` exactly matches the SQL column naming rule's cryptic standalone identifier and the table is a dimension table ending in `Dim`.
 
-**Suggested fix:** Add a brief schema/grain comment documenting that the gold file is one row per bank_account_id and that bank_account_id is the primary key.
+**Suggested fix:** Rename the self-matching column `Id` in `Reporting.CounterpartyDim` to a non-conflicting PascalCase name.
+
+```
+sed -i 's/^    Id                INT           PRIMARY KEY,/    CounterpartyId    INT           PRIMARY KEY,/' Treasury_SQL/CreateCounterpartyDim.sql
+```
+
+### REPRO-6 · Reproducibility [MEDIUM]
+
+**Location:** Treasury_Pipeline/01_IngestCashPositions.py
+**Confidence:** 0.90  |  **Risk score:** 1.8
+**Evidence:** The processing code directly overwrites raw source-derived outputs in place by writing CSVs to fixed paths (`silver/BankAccountBalances_20240701.csv`, `silver/DailyCashMovements_20240701.csv`) with no reproducibility controls such as seeds; this file performs data processing but sets no random seed.
+
+**Suggested fix:** Update the ingest script to avoid overwriting raw-derived outputs in place by writing copied outputs to new reproducible filenames or a separate staging path.
 
 ```
 python - <<'PY'
 from pathlib import Path
-path = Path('Treasury_Pipeline/03_ForecastLiquidity.py')
+path = Path('Treasury_Pipeline/01_IngestCashPositions.py')
 text = path.read_text()
-old = '"""Silver -> Gold: project each bank account\'s balance forward 30 days."""\n'
-new = '"""Silver -> Gold: project each bank account\'s balance forward 30 days.\n\nGold output grain: one row per bank_account_id (primary key).\nEach row represents the account\'s average daily net flow and projected 30-day balance.\n"""\n'
-if old not in text:
-    raise SystemExit('target text not found')
-path.write_text(text.replace(old, new, 1))
+text = text.replace('        balances.to_csv("silver/BankAccountBalances_20240701.csv", index=False)\n        movements.to_csv("silver/DailyCashMovements_20240701.csv", index=False)\n', '        balances.to_csv("silver/BankAccountBalances_20240701_copy.csv", index=False)\n        movements.to_csv("silver/DailyCashMovements_20240701_copy.csv", index=False)\n')
+path.write_text(text)
 PY
 ```
 
 ### SQL-11 · SQL column naming convention [LOW]
 
 **Location:** Treasury_SQL/CreateCounterpartyDim.sql
-**Confidence:** 0.99  |  **Risk score:** 0.99
-**Evidence:** Column definition `Id INT PRIMARY KEY` uses the generic standalone name `Id`, which the policy flags as non-compliant.
+**Confidence:** 0.98  |  **Risk score:** 0.98
+**Evidence:** In `CREATE TABLE Reporting.CounterpartyDim`, the column `Id` is a standalone generic name, which the policy flags as NON_COMPLIANT in SQL contexts.
 
-**Suggested fix:** Rename the generic primary key column from Id to CounterpartyId to comply with the SQL column naming convention.
+**Suggested fix:** Rename the generic SQL column `Id` to the compliant PascalCase `CounterpartyId` in the CounterpartyDim table definition.
 
 ```
-sed -i 's/\bId\s\+INT\s\+PRIMARY KEY/CounterpartyId INT PRIMARY KEY/' Treasury_SQL/CreateCounterpartyDim.sql
+sed -i 's/\bId\b                INT           PRIMARY KEY,/CounterpartyId      INT           PRIMARY KEY,/' Treasury_SQL/CreateCounterpartyDim.sql
 ```
+
+## Needs human review (low-confidence findings)
+
+### NAM-5 · File and folder naming convention [LOW]
+
+**Location:** bronze/BankAccountBalances_20240701.csv
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'BankAccountBalances_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd  [no automated fix attached: model reported no violation to fix]
 
 ### NAM-5 · File and folder naming convention [LOW]
 
 **Location:** gold/LiquidityForecast_20240701.csv
-**Confidence:** 0.98  |  **Risk score:** 0.98
-**Evidence:** File path is `gold/LiquidityForecast_20240701.csv`; the date suffix uses `20240701` without hyphens, which violates the required `yyyy-MM-dd` format.
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'LiquidityForecast_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd  [no automated fix attached: model reported no violation to fix]
 
-**Suggested fix:** Rename the file so the date suffix uses the required yyyy-MM-dd format.
+### NAM-5 · File and folder naming convention [LOW]
 
-```
-git mv gold/LiquidityForecast_20240701.csv gold/LiquidityForecast_2024-07-01.csv
-```
+**Location:** silver/BankAccountBalances_20240701.csv
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'BankAccountBalances_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd  [no automated fix attached: model reported no violation to fix]
+
+### NAM-5 · File and folder naming convention [LOW]
+
+**Location:** silver/BankAccountBalances_validated_20240701.csv
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'BankAccountBalances_validated_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd; file name stem 'BankAccountBalances_validated' is not CamelCase  [no automated fix attached: model reported no violation to fix]
 
 ### NAM-5 · File and folder naming convention [LOW]
 
 **Location:** silver/DailyCashMovements_20240701.csv
-**Confidence:** 0.98  |  **Risk score:** 0.98
-**Evidence:** File name is `DailyCashMovements_20240701.csv`; the date suffix uses `yyyyMMdd` with no hyphens, which the policy lists as a violation.
-
-**Suggested fix:** Rename the file to use the required hyphenated date format in the filename.
-
-```
-mv silver/DailyCashMovements_20240701.csv silver/DailyCashMovements_2024-07-01.csv
-```
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'DailyCashMovements_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd  [no automated fix attached: model reported no violation to fix]
 
 ### NAM-5 · File and folder naming convention [LOW]
 
 **Location:** silver/DailyCashMovements_validated_20240701.csv
-**Confidence:** 0.98  |  **Risk score:** 0.98
-**Evidence:** File name is `DailyCashMovements_validated_20240701.csv`; the date suffix uses `20240701` without hyphens, which violates the required `yyyy-MM-dd` format.
-
-**Suggested fix:** Rename the file so the date suffix uses the required yyyy-MM-dd format.
-
-```
-mv silver/DailyCashMovements_validated_20240701.csv silver/DailyCashMovements_validated_2024-07-01.csv
-```
+**Confidence:** 1.00  |  **Risk score:** 1.0
+**Evidence:** file name 'DailyCashMovements_validated_20240701.csv' ends in an 8-digit date suffix '20240701'; the required format is _yyyy-MM-dd; file name stem 'DailyCashMovements_validated' is not CamelCase  [no automated fix attached: model reported no violation to fix]
 
 ## Compliant checks
 
-44 checks passed. See machine_report.json for the full list.
+37 checks passed. See machine_report.json for the full list.
