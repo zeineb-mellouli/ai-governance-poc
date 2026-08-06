@@ -100,6 +100,21 @@ def test_report_records_the_serving_backend_fingerprint():
     assert report.model_fingerprints == [FAKE_FINGERPRINT]
 
 
+def test_samples_flag_is_honoured_and_recorded_on_the_report():
+    """k has to be on the report: it changes what confidence_score means."""
+    client = FakeOpenAIClient()
+    report = run_audit(NON_COMPLIANT_REPO, client=client, samples=1)
+
+    assert report.audit_samples == 1
+    # One model call per file that has candidate policies, not three.
+    assert client.call_count("File path: final_v2_ACTUAL.py") == 1
+
+    client3 = FakeOpenAIClient()
+    report3 = run_audit(NON_COMPLIANT_REPO, client=client3, samples=3)
+    assert report3.audit_samples == 3
+    assert client3.call_count("File path: final_v2_ACTUAL.py") == 3
+
+
 # --- repo-level compliance score --------------------------------------------
 
 

@@ -127,6 +127,11 @@ class ComplianceReport(BaseModel):
     # which distinguishes "our pipeline is non-deterministic" from "the model
     # underneath us changed". Without it the two are indistinguishable.
     model_fingerprints: list[str] = Field(default_factory=list)
+    # The self-consistency k this run used. Recorded because it changes what
+    # confidence_score means: at k=1 no disagreement is measurable, so every
+    # confidence is 1.0 and the remediation confidence gate never fires. Two
+    # reports are only comparable if this matches.
+    audit_samples: int = 1
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -15,8 +15,14 @@ from agents.schemas import ComplianceReport, Finding, FindingStatus, Remediation
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 
-def run_audit(repo_path: str, client: OpenAI | None = None) -> ComplianceReport:
+def run_audit(
+    repo_path: str,
+    client: OpenAI | None = None,
+    samples: int | None = None,
+) -> ComplianceReport:
+    """Run the full pipeline. `samples` is the self-consistency k (None = default)."""
     client = client or get_client()
+    samples = auditor_agent._resolve_samples(samples)
 
     try:
         snapshot = repository_agent.scan(repo_path)
@@ -24,14 +30,21 @@ def run_audit(repo_path: str, client: OpenAI | None = None) -> ComplianceReport:
         return ComplianceReport(
             repo_name=Path(repo_path).name,
             repo_path=repo_path,
+            audit_samples=samples,
             errors=[f"Repository Agent failed: {exc}"],
         )
 
-    report = ComplianceReport(repo_name=snapshot.repo_root_name, repo_path=snapshot.repo_path)
+    report = ComplianceReport(
+        repo_name=snapshot.repo_root_name,
+        repo_path=snapshot.repo_path,
+        audit_samples=samples,
+    )
     fingerprints: list[str] = []
 
     try:
-        findings, audit_errors = auditor_agent.audit(snapshot, client=client, fingerprints=fingerprints)
+        findings, audit_errors = auditor_agent.audit(
+            snapshot, client=client, fingerprints=fingerprints, samples=samples
+        )
         report.findings.extend(findings)
         report.errors.extend(audit_errors)
     except Exception as exc:  # noqa: BLE001 - e.g. ChromaDB unreachable
@@ -112,6 +125,12 @@ def _render_draft_report(report: ComplianceReport) -> str:
         f"Run at: {report.run_timestamp}",
         f"Repository path: {report.repo_path}",
     ]
+    lines.append(f"Self-consistency samples (k): {report.audit_samples}")
+    if report.audit_samples == 1:
+        lines.append(
+            "> At k=1 no disagreement is measurable, so every confidence is 1.0 "
+            "and the remediation confidence gate does not fire."
+        )
     if report.model_fingerprints:
         lines.append(f"Model backend fingerprint(s): {', '.join(report.model_fingerprints)}")
     lines += [

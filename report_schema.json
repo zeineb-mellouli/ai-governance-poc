@@ -169,6 +169,11 @@
       },
       "title": "Model Fingerprints",
       "type": "array"
+    },
+    "audit_samples": {
+      "default": 1,
+      "title": "Audit Samples",
+      "type": "integer"
     }
   },
   "required": [

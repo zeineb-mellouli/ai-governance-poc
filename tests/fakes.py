@@ -72,6 +72,10 @@ class FakeOpenAIClient:
         self._call_counts: dict[str, int] = {}
         self.chat = SimpleNamespace(completions=self)
 
+    def call_count(self, prompt_substring: str) -> int:
+        """How many times a prompt containing this substring was sent (i.e. k)."""
+        return sum(n for prompt, n in self._call_counts.items() if prompt_substring in prompt)
+
     @staticmethod
     def _script_for_sample(scripted: list, sample_index: int) -> list:
         """Pick this sample's verdicts.

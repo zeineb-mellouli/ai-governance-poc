@@ -80,6 +80,10 @@ RRF_K = 60
 # a cheap run, at the price of confidence collapsing to a constant 1.0 ("no
 # disagreement was measurable"), which in turn makes the remediation confidence
 # gate a no-op.
+#
+# This is only the DEFAULT. Callers pass `samples=` explicitly (the CLI's
+# --samples flag does), so which k produced a run is recorded on the report
+# rather than being ambient shell state that a later command silently inherits.
 AUDIT_SAMPLES = max(1, int(os.environ.get("AGA_AUDIT_SAMPLES", "3")))
 # Greedy decoding would return k identical samples and measure nothing. A small
 # temperature gives the samples room to disagree where the model is genuinely
@@ -888,16 +892,20 @@ def _vote(samples: list[list[Finding]]) -> list[Finding]:
     return voted
 
 
-def _sample_settings(index: int) -> tuple[int, float]:
-    """(seed, temperature) for sample `index`.
+def _sample_settings(index: int, samples: int) -> tuple[int, float]:
+    """(seed, temperature) for sample `index` of `samples`.
 
     The seeds walk a fixed sequence from the base seed, so the *set* of samples
     is reproducible even though the samples differ from one another. With one
     sample we stay fully greedy.
     """
-    if AUDIT_SAMPLES == 1:
+    if samples == 1:
         return REQUEST_SEED, 0.0
     return REQUEST_SEED + index, VOTE_TEMPERATURE
+
+
+def _resolve_samples(samples: int | None) -> int:
+    return AUDIT_SAMPLES if samples is None else max(1, samples)
 
 
 # --- the two LLM passes ------------------------------------------------------
@@ -925,7 +933,9 @@ def _evaluate_file(
     client: OpenAI,
     policies_by_id: dict[str, dict],
     fingerprints: list[str] | None = None,
+    samples: int | None = None,
 ) -> tuple[list[Finding], list[str]]:
+    samples = _resolve_samples(samples)
     # Canonical policy-file order, filtered to the policies whose globs cover
     # this path. A file that no policy covers costs no model call at all.
     candidate_ids = _file_candidates(file.path, policies_by_id)
@@ -945,10 +955,10 @@ def _evaluate_file(
         + "\n".join(_policy_block(pid, policies_by_id[pid]) for pid in candidate_ids)
     )
 
-    samples: list[list[Finding]] = []
+    drawn: list[list[Finding]] = []
     errors: list[str] = []
-    for index in range(AUDIT_SAMPLES):
-        seed, temperature = _sample_settings(index)
+    for index in range(samples):
+        seed, temperature = _sample_settings(index, samples)
         payload = chat_json(client, SYSTEM_PROMPT, user_content, fingerprints, seed, temperature)
         findings, missing = _findings_from_payload(
             payload,
@@ -958,14 +968,14 @@ def _evaluate_file(
             file_path=file.path,
             retrieval_scores=retrieval_scores,
         )
-        samples.append(findings)
+        drawn.append(findings)
         if missing:
             errors.append(
                 f"Auditor Agent: no verdict returned for {', '.join(missing)} "
-                f"on {file.path} (sample {index + 1}/{AUDIT_SAMPLES})"
+                f"on {file.path} (sample {index + 1}/{samples})"
             )
 
-    return _vote(samples), errors
+    return _vote(drawn), errors
 
 
 def _build_repo_context(snapshot: RepositorySnapshot) -> tuple[str, str]:
@@ -996,8 +1006,10 @@ def _evaluate_repo_holistic(
     client: OpenAI,
     policies_by_id: dict[str, dict],
     fingerprints: list[str] | None = None,
+    samples: int | None = None,
 ) -> tuple[list[Finding], list[str]]:
     """One call that sees the whole repo at once, for violations no single file can reveal on its own."""
+    samples = _resolve_samples(samples)
     manifest_text, content_bundle = _build_repo_context(snapshot)
 
     semantic_query_text = f"Repository: {snapshot.repo_root_name}\n\nFiles:\n{manifest_text}\n\n{content_bundle[:3000]}"
@@ -1023,10 +1035,10 @@ def _evaluate_repo_holistic(
         )
     )
 
-    samples: list[list[Finding]] = []
+    drawn: list[list[Finding]] = []
     errors: list[str] = []
-    for index in range(AUDIT_SAMPLES):
-        seed, temperature = _sample_settings(index)
+    for index in range(samples):
+        seed, temperature = _sample_settings(index, samples)
         payload = chat_json(
             client, HOLISTIC_SYSTEM_PROMPT, user_content, fingerprints, seed, temperature
         )
@@ -1038,14 +1050,14 @@ def _evaluate_repo_holistic(
             file_path=None,
             retrieval_scores=retrieval_scores,
         )
-        samples.append(findings)
+        drawn.append(findings)
         if missing:
             errors.append(
                 f"Auditor Agent: no verdict returned for {', '.join(missing)} on the "
-                f"whole-repo pass (sample {index + 1}/{AUDIT_SAMPLES})"
+                f"whole-repo pass (sample {index + 1}/{samples})"
             )
 
-    return _vote(samples), errors
+    return _vote(drawn), errors
 
 
 def _dedupe_holistic(per_file_findings: list[Finding], holistic_findings: list[Finding]) -> list[Finding]:
@@ -1068,14 +1080,18 @@ def audit(
     snapshot: RepositorySnapshot,
     client: OpenAI | None = None,
     fingerprints: list[str] | None = None,
+    samples: int | None = None,
 ) -> tuple[list[Finding], list[str]]:
     """Evaluate every file, plus repo-level and whole-repo checks, against the policy library.
 
     Returns (findings, errors). A failure on one file (or the holistic pass)
     is recorded in errors and does not stop the rest of the audit. Serving-backend
     fingerprints are appended to `fingerprints` when one is supplied.
+
+    `samples` is the self-consistency k. None falls back to AUDIT_SAMPLES.
     """
     client = client or get_client()
+    samples = _resolve_samples(samples)
     policies_by_id = _load_policies()
     collection = _get_collection()
 
@@ -1087,7 +1103,7 @@ def audit(
     for file in snapshot.files:
         try:
             file_findings, file_errors = _evaluate_file(
-                file, collection, client, policies_by_id, fingerprints
+                file, collection, client, policies_by_id, fingerprints, samples
             )
             findings.extend(file_findings)
             errors.extend(file_errors)
@@ -1096,7 +1112,7 @@ def audit(
 
     try:
         holistic, holistic_errors = _evaluate_repo_holistic(
-            snapshot, collection, client, policies_by_id, fingerprints
+            snapshot, collection, client, policies_by_id, fingerprints, samples
         )
         findings.extend(_dedupe_holistic(findings, holistic))
         errors.extend(holistic_errors)

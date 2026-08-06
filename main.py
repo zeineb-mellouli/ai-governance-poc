@@ -10,19 +10,28 @@ from rich.table import Table
 
 load_dotenv()
 
+from agents.auditor_agent import _resolve_samples as resolve_samples  # noqa: E402
 from agents.orchestrator import run_audit, write_reports  # noqa: E402 - must load .env before importing agents
 
 app = typer.Typer()
 console = Console()
 
 
+SAMPLES_HELP = (
+    "Self-consistency samples per prompt (k). Each prompt is asked k times and the "
+    "verdict is the majority; confidence is the fraction that agreed. k=1 is cheapest "
+    "but measures no disagreement, so every confidence is 1.0. Default: 3."
+)
+
+
 @app.command()
 def audit(
     repo: str = typer.Option(..., "--repo", help="Path to the local repository to audit"),
     out: str = typer.Option("reports", "--out", help="Base directory for machine_report.json / draft_report.md"),
+    samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
 ) -> None:
     """Run Repository -> Auditor -> Remediation against a local repo and write a compliance report."""
-    report = run_audit(repo)
+    report = run_audit(repo, samples=samples)
     machine_path, draft_path = write_reports(report, out)
 
     console.print(f"[bold]Audit complete[/bold] for {report.repo_name}")
@@ -38,6 +47,7 @@ def batch(
     root: str = typer.Option("sample_repos", "--root", help="Root folder containing category subfolders and repos"),
     out: str = typer.Option("reports", "--out", help="Base directory for all reports"),
     category: str = typer.Option("", "--category", help="Only run repos under this category subfolder (e.g. compliant)"),
+    samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
 ) -> None:
     """Audit every repository found under --root and print a summary table.
 
@@ -64,14 +74,15 @@ def batch(
         console.print(f"[yellow]No repos found under {root_path}[/yellow]")
         raise typer.Exit(0)
 
-    console.print(f"\n[bold]Batch audit — {len(repo_paths)} repos[/bold]\n")
+    effective_k = resolve_samples(samples)
+    console.print(f"\n[bold]Batch audit — {len(repo_paths)} repos, k={effective_k}[/bold]\n")
 
     results = []
     failed = 0
     for cat, repo_dir in repo_paths:
         console.print(f"  Auditing [cyan]{cat}/{repo_dir.name}[/cyan] ...")
         try:
-            report = run_audit(str(repo_dir))
+            report = run_audit(str(repo_dir), samples=samples)
             machine_path, draft_path = write_reports(report, out)
             s = report.summary
             sc = report.compliance_score

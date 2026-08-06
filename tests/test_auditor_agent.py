@@ -338,11 +338,20 @@ def test_a_split_vote_is_undecided_rather_than_guessed():
 
 def test_sampling_uses_a_fixed_seed_sequence():
     """Samples differ from each other, but the set of samples is reproducible."""
-    settings = [auditor_agent._sample_settings(i) for i in range(3)]
+    settings = [auditor_agent._sample_settings(i, 3) for i in range(3)]
     seeds = [s for s, _ in settings]
     assert len(set(seeds)) == 3
     assert seeds == sorted(seeds)
     assert all(temp == auditor_agent.VOTE_TEMPERATURE for _, temp in settings)
+    # k=1 measures nothing, so there is no reason to leave greedy decoding.
+    assert auditor_agent._sample_settings(0, 1) == (auditor_agent.REQUEST_SEED, 0.0)
+
+
+def test_samples_argument_overrides_the_module_default():
+    assert auditor_agent._resolve_samples(None) == auditor_agent.AUDIT_SAMPLES
+    assert auditor_agent._resolve_samples(1) == 1
+    assert auditor_agent._resolve_samples(5) == 5
+    assert auditor_agent._resolve_samples(0) == 1  # never zero calls
 
 
 def test_disagreeing_samples_lower_confidence_end_to_end():
