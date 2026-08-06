@@ -74,39 +74,53 @@ def batch(
             report = run_audit(str(repo_dir))
             machine_path, draft_path = write_reports(report, out)
             s = report.summary
+            sc = report.compliance_score
             results.append({
                 "category": cat,
                 "repo": report.repo_name,
+                "grade": sc["grade"],
+                "rate": "—" if sc["weighted_pass_rate"] is None else f"{sc['weighted_pass_rate']:.1%}",
                 "total": s["total_findings"],
                 "compliant": s["by_status"].get("COMPLIANT", 0),
                 "non_compliant": s["by_status"].get("NON_COMPLIANT", 0),
                 "needs_review": s["by_status"].get("NEEDS_REVIEW", 0),
                 "not_applicable": s["by_status"].get("NOT_APPLICABLE", 0),
+                "human_action": s["needs_human_attention"],
                 "errors": len(report.errors),
             })
         except Exception as exc:  # noqa: BLE001
             console.print(f"    [red]FAILED: {exc}[/red]")
-            results.append({"category": cat, "repo": repo_dir.name, "total": "—", "compliant": "—",
-                             "non_compliant": "—", "needs_review": "—", "not_applicable": "—", "errors": "CRASH"})
+            results.append({"category": cat, "repo": repo_dir.name, "grade": "—", "rate": "—",
+                             "total": "—", "compliant": "—",
+                             "non_compliant": "—", "needs_review": "—", "not_applicable": "—",
+                             "human_action": "—", "errors": "CRASH"})
             failed += 1
 
     # Summary table
     table = Table(title="\nBatch Audit Summary", show_lines=True)
     table.add_column("Category", style="dim")
     table.add_column("Repo")
+    table.add_column("Grade")
+    table.add_column("Rate", justify="right")
     table.add_column("Total", justify="right")
     table.add_column("✅ Compliant", justify="right", style="green")
     table.add_column("❌ Non-Compliant", justify="right", style="red")
-    table.add_column("👁 Needs Review", justify="right", style="yellow")
+    table.add_column("👁 Undecided", justify="right", style="yellow")
     table.add_column("— N/A", justify="right", style="dim")
+    # Non-compliant findings with no usable auto-fix, plus undecided verdicts.
+    # This is the queue a person actually has to work through -- distinct from
+    # "Undecided", which is only the verdicts the audit could not settle.
+    table.add_column("🙋 Human Action", justify="right", style="yellow")
     table.add_column("Errors", justify="right")
 
     for r in results:
         err_str = str(r["errors"])
+        grade_style = {"PASS": "green", "NEEDS_WORK": "yellow", "FAIL": "red"}.get(r["grade"], "dim")
         table.add_row(
             r["category"], r["repo"],
+            f"[{grade_style}]{r['grade']}[/{grade_style}]", str(r["rate"]),
             str(r["total"]), str(r["compliant"]), str(r["non_compliant"]),
-            str(r["needs_review"]), str(r["not_applicable"]),
+            str(r["needs_review"]), str(r["not_applicable"]), str(r["human_action"]),
             f"[red]{err_str}[/red]" if r["errors"] else err_str,
         )
 

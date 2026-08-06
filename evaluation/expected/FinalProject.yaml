@@ -13,7 +13,11 @@ expect_violations:
   # final_v2_ACTUAL.py -- six distinct violations in one file
   - {policy: SEC-3, file: final_v2_ACTUAL.py, note: hardcoded prod connection string and sk- api key}
   - {policy: DQ-1, file: final_v2_ACTUAL.py, note: loads and trains with no validation at all}
-  - {policy: ARCH-12, file: final_v2_ACTUAL.py, note: overwrites bronze source, no silver layer}
+  # Two separate violations in one file. Bronze immutability moved out of
+  # ARCH-12 into REPRO-14, so exactly one policy owns "written over its source"
+  # and it fires whether or not the repo happens to use medallion layer names.
+  - {policy: ARCH-12, file: final_v2_ACTUAL.py, note: no silver layer -- bronze read, gold-equivalent written directly}
+  - {policy: REPRO-14, file: final_v2_ACTUAL.py, note: writes df back over bronze/EthanolMarketRate_20240701.csv, the file it read}
   - {policy: REPRO-6, file: final_v2_ACTUAL.py, note: train_test_split with no random_state}
   - {policy: OPS-2, file: final_v2_ACTUAL.py, note: print() only, no logging module}
   - {policy: PII-4, file: final_v2_ACTUAL.py, note: print(customers) exposes name/email/phone}
@@ -26,7 +30,7 @@ expect_violations:
   - {policy: NAM-5, file: Untitled.ipynb, note: vague token 'Untitled'}
 
   # configuration
-  - {policy: REPRO-6, file: requirements.txt, note: all five packages unpinned}
+  - {policy: REPRO-13, file: requirements.txt, note: all five packages unpinned}
   - {policy: GIT-8, file: pipeline.yml, note: branches main, my-analysis-branch, hotfix}
   - {policy: NAM-5, file: pipeline.yml, note: stem 'pipeline' is not CamelCase}
 

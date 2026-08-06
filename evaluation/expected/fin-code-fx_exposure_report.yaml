@@ -28,7 +28,7 @@ expect_clean:
   - {policy: SQL-10, file: Treasury_SQL/CreateFXExposureFact.sql, note: Reporting.FXExposureFact correct}
   - {policy: SQL-11, file: Treasury_SQL/CreateFXExposureFact.sql, note: PascalCase, QuarterEndDate qualified}
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
-  - {policy: REPRO-6, file: requirements.txt, note: all three packages pinned}
+  - {policy: REPRO-13, file: requirements.txt, note: all three packages pinned}
   - {policy: REPRO-6, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: no stochastic operations}
   - {policy: OPS-2, file: Treasury_Pipeline/01_IngestFXPositions.py, note: logging configured to logs/ingest.log}
   - {policy: OPS-2, file: Treasury_Pipeline/02_GenerateExposureReport.py, note: logging configured to logs/report.log}

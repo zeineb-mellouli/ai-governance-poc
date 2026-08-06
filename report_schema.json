@@ -39,6 +39,11 @@
           "title": "Evidence",
           "type": "string"
         },
+        "reasoning": {
+          "default": "",
+          "title": "Reasoning",
+          "type": "string"
+        },
         "retrieval_chunk_id": {
           "title": "Retrieval Chunk Id",
           "type": "string"
@@ -58,10 +63,21 @@
           ],
           "default": null
         },
-        "risk_score": {
-          "readOnly": true,
-          "title": "Risk Score",
-          "type": "number"
+        "remediation_status": {
+          "$ref": "#/$defs/RemediationStatus",
+          "default": "NOT_REQUIRED"
+        },
+        "remediation_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Remediation Note"
         }
       },
       "required": [
@@ -72,13 +88,13 @@
         "confidence_score",
         "evidence",
         "retrieval_chunk_id",
-        "retrieval_score",
-        "risk_score"
+        "retrieval_score"
       ],
       "title": "Finding",
       "type": "object"
     },
     "FindingStatus": {
+      "description": "The Auditor's verdict. Only the Auditor may set this.\n\nThe Remediation Agent must never write to it: whether a fix could be\ngenerated says nothing about whether the violation is real, and conflating\nthe two put 30 confidence-1.0 deterministic naming violations into the\n\"low-confidence, needs human review\" bucket. Remediation outcome lives on\nits own axis, in RemediationStatus.",
       "enum": [
         "COMPLIANT",
         "NON_COMPLIANT",
@@ -105,6 +121,19 @@
       ],
       "title": "Remediation",
       "type": "object"
+    },
+    "RemediationStatus": {
+      "description": "What happened when we tried to produce a fix -- orthogonal to FindingStatus.",
+      "enum": [
+        "NOT_REQUIRED",
+        "AUTO_FIXED",
+        "NO_FIX_AVAILABLE",
+        "UNSAFE_FIX_REJECTED",
+        "SKIPPED_LOW_CONFIDENCE",
+        "FAILED"
+      ],
+      "title": "RemediationStatus",
+      "type": "string"
     }
   },
   "properties": {
@@ -134,17 +163,17 @@
       "title": "Errors",
       "type": "array"
     },
-    "summary": {
-      "additionalProperties": true,
-      "readOnly": true,
-      "title": "Summary",
-      "type": "object"
+    "model_fingerprints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Model Fingerprints",
+      "type": "array"
     }
   },
   "required": [
     "repo_name",
-    "repo_path",
-    "summary"
+    "repo_path"
   ],
   "title": "ComplianceReport",
   "type": "object"

@@ -22,14 +22,18 @@ def main() -> None:
 
     ids = [p["policy_id"] for p in policies]
     documents = [
-        f"{p['title']}\n\n{p['description'].strip()}\n\nApplies when: {p['applies_when'].strip()}"
+        f"{p['title']}\n\n{p['description'].strip()}\n\n"
+        f"Rule: {p['rule'].strip()}\n\n"
+        f"Applies to: {', '.join(p.get('applies_to') or ['(repository-level)'])}"
         for p in policies
     ]
     metadatas = [
         {
             "title": p["title"],
             "severity": p["severity"],
-            "evaluation_hint": p["evaluation_hint"].strip(),
+            "scope": p.get("scope", "file"),
+            "evaluation": p.get("evaluation", "model"),
+            "rule": p["rule"].strip(),
         }
         for p in policies
     ]

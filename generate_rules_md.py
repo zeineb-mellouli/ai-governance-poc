@@ -18,29 +18,45 @@ SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
 def is_universal(policy: dict) -> bool:
     """Return True when the policy applies unconditionally to every repo."""
-    aw = policy.get("applies_when", "").strip().lower()
-    return aw.startswith("every repo")
+    if policy.get("scope") == "repository":
+        return True
+    return "**/*" in (policy.get("applies_to") or [])
 
 
 def format_block(policy: dict) -> str:
-    pid       = policy["policy_id"]
-    title     = policy["title"]
-    severity  = policy["severity"]
-    desc      = policy["description"].strip()
-    hint      = policy["evaluation_hint"].strip()
-    aw        = policy["applies_when"].strip()
+    pid      = policy["policy_id"]
+    title    = policy["title"]
+    severity = policy["severity"]
 
-    return "\n".join([
+    applies = policy.get("applies_to") or []
+    applies_text = ", ".join(f"`{g}`" for g in applies) if applies else "the repository as a whole"
+    excludes = policy.get("excludes") or []
+
+    block = [
         f"### {pid} · {title}  [{severity}]",
         "",
-        desc,
+        policy["description"].strip(),
         "",
-        f"**Applies when:** {aw}",
+        f"**Applies to:** {applies_text}",
+    ]
+    if excludes:
+        block.append(f"**Except:** {', '.join(f'`{g}`' for g in excludes)}")
+    block += [
+        f"**Decided by:** {policy.get('evaluation', 'model')}",
         "",
-        "**How to evaluate:**",
+        "**Rule:**",
         "",
-        hint,
-    ])
+        policy["rule"].strip(),
+    ]
+
+    examples = policy.get("examples") or {}
+    for label, heading in (("compliant", "Compliant"), ("non_compliant", "Non-compliant")):
+        entries = examples.get(label) or []
+        if entries:
+            block += ["", f"**{heading} examples:**", ""]
+            block += [f"- `{e}`" for e in entries]
+
+    return "\n".join(block)
 
 
 def main() -> None:

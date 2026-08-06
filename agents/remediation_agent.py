@@ -1,21 +1,26 @@
 """Remediation Agent: turns NON_COMPLIANT findings into a concrete fix.
 
-Confidence gate (pitch improvement 4.4): findings below CONFIDENCE_THRESHOLD
-are marked NEEDS_REVIEW instead of receiving an auto-generated remediation --
-an uncertain Auditor verdict must not produce an executable command that
-could be misapplied to the wrong resource.
+This agent NEVER writes to finding.status. Whether a fix could be produced is
+independent of whether the violation is real, and collapsing the two axes was a
+bug with teeth: a deterministic, confidence-1.0 naming violation whose fix the
+model declined to write was being restated as a low-confidence finding needing
+human review. Every outcome here is recorded on finding.remediation_status
+instead, leaving the Auditor's verdict intact.
+
+Confidence gate (pitch improvement 4.4): findings below CONFIDENCE_THRESHOLD get
+no auto-generated remediation -- an uncertain Auditor verdict must not produce an
+executable command that could be misapplied to the wrong resource. They stay
+NON_COMPLIANT and are marked SKIPPED_LOW_CONFIDENCE.
 """
 
-import json
-import os
 import re
 from pathlib import Path
 
 import yaml
 from openai import OpenAI
 
-from agents.llm_client import get_client
-from agents.schemas import Finding, FindingStatus, Remediation
+from agents.llm_client import chat_json, get_client
+from agents.schemas import Finding, FindingStatus, Remediation, RemediationStatus
 
 CONFIDENCE_THRESHOLD = 0.6
 POLICIES_PATH = "policies/policies.yaml"
@@ -122,11 +127,14 @@ def remediate(
     findings: list[Finding],
     file_content_by_path: dict[str, str],
     client: OpenAI | None = None,
+    fingerprints: list[str] | None = None,
 ) -> list[str]:
-    """Mutate NON_COMPLIANT findings in place: attach a remediation, or gate to NEEDS_REVIEW.
+    """Attach a remediation to each NON_COMPLIANT finding, or record why there isn't one.
 
-    Returns a list of error strings for findings whose remediation call failed
-    (the finding is left NON_COMPLIANT with no remediation attached).
+    Mutates findings in place, writing only to remediation, remediation_status,
+    and remediation_note. finding.status is never touched.
+
+    Returns a list of error strings for findings whose remediation call failed.
     """
     client = client or get_client()
     errors: list[str] = []
@@ -134,41 +142,54 @@ def remediate(
 
     for finding in findings:
         if finding.status != FindingStatus.NON_COMPLIANT:
+            finding.remediation_status = RemediationStatus.NOT_REQUIRED
+            continue
+
+        # The Auditor already derived a deterministic fix (file renames, README
+        # scaffold) or established that none exists. Re-asking a model would only
+        # let it second-guess a confidence-1.0 grammar check by reading the file's
+        # contents, which have nothing to do with the violation.
+        if finding.remediation is not None:
+            finding.remediation_status = RemediationStatus.AUTO_FIXED
+            continue
+        if finding.remediation_status == RemediationStatus.NO_FIX_AVAILABLE:
             continue
 
         if finding.confidence_score < CONFIDENCE_THRESHOLD:
-            finding.status = FindingStatus.NEEDS_REVIEW
+            finding.remediation_status = RemediationStatus.SKIPPED_LOW_CONFIDENCE
+            finding.remediation_note = (
+                f"confidence {finding.confidence_score:.2f} is below the "
+                f"{CONFIDENCE_THRESHOLD} threshold for generating an executable fix"
+            )
             continue
 
         try:
             file_content = file_content_by_path.get(finding.file_path) if finding.file_path else None
-            response = client.chat.completions.create(
-                model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": _build_user_content(
-                            finding, file_content, policy_hints.get(finding.policy_id)
-                        ),
-                    },
-                ],
-                response_format={"type": "json_object"},
-                temperature=0,
+            payload = chat_json(
+                client,
+                SYSTEM_PROMPT,
+                _build_user_content(finding, file_content, policy_hints.get(finding.policy_id)),
+                fingerprints,
             )
-            payload = json.loads(response.choices[0].message.content)
             description, fix = payload["description"], payload["fix"]
 
             rejection = _reject_fix(description, fix)
             if rejection:
                 # An unsafe or empty fix must never reach the report as something
-                # runnable. Hand the finding to a human with the reason attached.
-                finding.status = FindingStatus.NEEDS_REVIEW
-                finding.evidence = f"{finding.evidence}  [no automated fix attached: {rejection}]"
+                # runnable -- but the violation stands regardless.
+                finding.remediation_status = (
+                    RemediationStatus.NO_FIX_AVAILABLE
+                    if "no violation to fix" in rejection or "no-op" in rejection
+                    else RemediationStatus.UNSAFE_FIX_REJECTED
+                )
+                finding.remediation_note = rejection
                 continue
 
             finding.remediation = Remediation(description=description, fix=fix)
+            finding.remediation_status = RemediationStatus.AUTO_FIXED
         except Exception as exc:  # noqa: BLE001 - one failed remediation must not abort the run
+            finding.remediation_status = RemediationStatus.FAILED
+            finding.remediation_note = str(exc)
             errors.append(f"Remediation Agent failed on {finding.policy_id} ({finding.file_path}): {exc}")
 
     return errors

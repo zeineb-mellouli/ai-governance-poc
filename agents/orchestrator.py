@@ -10,7 +10,7 @@ from openai import OpenAI
 
 from agents import auditor_agent, remediation_agent, repository_agent
 from agents.llm_client import get_client
-from agents.schemas import ComplianceReport, Finding, FindingStatus
+from agents.schemas import ComplianceReport, Finding, FindingStatus, RemediationStatus
 
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 
@@ -28,22 +28,27 @@ def run_audit(repo_path: str, client: OpenAI | None = None) -> ComplianceReport:
         )
 
     report = ComplianceReport(repo_name=snapshot.repo_root_name, repo_path=snapshot.repo_path)
+    fingerprints: list[str] = []
 
     try:
-        findings, audit_errors = auditor_agent.audit(snapshot, client=client)
+        findings, audit_errors = auditor_agent.audit(snapshot, client=client, fingerprints=fingerprints)
         report.findings.extend(findings)
         report.errors.extend(audit_errors)
     except Exception as exc:  # noqa: BLE001 - e.g. ChromaDB unreachable
         report.errors.append(f"Auditor Agent failed: {exc}")
+        report.model_fingerprints = sorted(set(fingerprints))
         return report
 
     try:
         file_content_by_path = {f.path: f.content for f in snapshot.files}
-        remediation_errors = remediation_agent.remediate(report.findings, file_content_by_path, client=client)
+        remediation_errors = remediation_agent.remediate(
+            report.findings, file_content_by_path, client=client, fingerprints=fingerprints
+        )
         report.errors.extend(remediation_errors)
     except Exception as exc:  # noqa: BLE001
         report.errors.append(f"Remediation Agent failed: {exc}")
 
+    report.model_fingerprints = sorted(set(fingerprints))
     return report
 
 
@@ -64,6 +69,14 @@ def _sort_key(finding: Finding) -> tuple:
     return (SEVERITY_ORDER.get(finding.severity, 99), -finding.risk_score)
 
 
+_NO_FIX_LABEL = {
+    RemediationStatus.NO_FIX_AVAILABLE: "No automated fix",
+    RemediationStatus.UNSAFE_FIX_REJECTED: "Proposed fix rejected as unsafe",
+    RemediationStatus.SKIPPED_LOW_CONFIDENCE: "Fix withheld",
+    RemediationStatus.FAILED: "Fix generation failed",
+}
+
+
 def _render_finding(finding: Finding) -> list[str]:
     block = [
         f"### {finding.policy_id} · {finding.title} [{finding.severity}]",
@@ -81,6 +94,12 @@ def _render_finding(finding: Finding) -> list[str]:
             finding.remediation.fix,
             "```",
         ]
+    elif finding.status == FindingStatus.NON_COMPLIANT:
+        # Say why there is no fix, rather than silently omitting the section.
+        # The violation stands either way -- only the automation stopped.
+        label = _NO_FIX_LABEL.get(finding.remediation_status, "No fix attached")
+        note = f": {finding.remediation_note}" if finding.remediation_note else "."
+        block += ["", f"**{label}**{note}"]
     block.append("")
     return block
 
@@ -92,13 +111,43 @@ def _render_draft_report(report: ComplianceReport) -> str:
         "",
         f"Run at: {report.run_timestamp}",
         f"Repository path: {report.repo_path}",
+    ]
+    if report.model_fingerprints:
+        lines.append(f"Model backend fingerprint(s): {', '.join(report.model_fingerprints)}")
+    lines += [
         "",
         "## Summary",
         "",
-        f"- Total findings evaluated: {summary['total_findings']}",
     ]
-    for status, count in summary["by_status"].items():
+
+    score = report.compliance_score
+    if score["weighted_pass_rate"] is not None:
+        lines += [
+            f"**Grade: {score['grade']}** — severity-weighted pass rate "
+            f"{score['weighted_pass_rate']:.1%} "
+            f"({score['weight_earned']}/{score['weight_possible']} weighted checks)",
+            "",
+        ]
+        if score["gate"]:
+            lines += [f"> {score['gate']}.", ""]
+        if score["undecided"]:
+            lines += [
+                f"> {score['undecided']} verdict(s) were undecided and are excluded from the rate.",
+                "",
+            ]
+
+    lines += [
+        f"- Checks evaluated: {summary['checks_evaluated']}",
+        f"- Applicable checks (compliant + non-compliant): {summary['applicable_checks']}",
+    ]
+    for status, count in sorted(summary["by_status"].items()):
         lines.append(f"- {status}: {count}")
+    lines.append(f"- Requiring human action: {summary['needs_human_attention']}")
+    if summary["non_compliant_by_remediation_status"]:
+        lines.append("")
+        lines.append("Remediation outcome for non-compliant findings:")
+        for name, count in sorted(summary["non_compliant_by_remediation_status"].items()):
+            lines.append(f"- {name}: {count}")
     lines.append("")
 
     if report.errors:
@@ -109,6 +158,7 @@ def _render_draft_report(report: ComplianceReport) -> str:
     non_compliant = sorted((f for f in report.findings if f.status == FindingStatus.NON_COMPLIANT), key=_sort_key)
     needs_review = sorted((f for f in report.findings if f.status == FindingStatus.NEEDS_REVIEW), key=_sort_key)
     compliant = [f for f in report.findings if f.status == FindingStatus.COMPLIANT]
+    not_applicable = [f for f in report.findings if f.status == FindingStatus.NOT_APPLICABLE]
 
     if non_compliant:
         lines += ["## Non-compliant findings", ""]
@@ -116,14 +166,20 @@ def _render_draft_report(report: ComplianceReport) -> str:
             lines += _render_finding(finding)
 
     if needs_review:
-        lines += ["## Needs human review (low-confidence findings)", ""]
+        # Undecided verdicts only. A violation that simply has no automated fix
+        # is still a violation and stays in the section above, annotated.
+        lines += [
+            "## Needs human review (the audit could not settle these)",
+            "",
+        ]
         for finding in needs_review:
             lines += _render_finding(finding)
 
     lines += [
-        "## Compliant checks",
+        "## Checks that passed or did not apply",
         "",
-        f"{len(compliant)} checks passed. See machine_report.json for the full list.",
+        f"{len(compliant)} checks passed; {len(not_applicable)} did not apply to this repository. "
+        f"See machine_report.json for the full list.",
         "",
     ]
 

@@ -34,8 +34,13 @@ expect_clean:
   - {policy: ARCH-12, file: MarketRate_Pipeline/02_TransformData.py, note: silver -> gold}
   - {policy: ARCH-12, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: reads gold only}
   # every dependency pinned
-  - {policy: REPRO-6, file: requirements.txt, note: all 8 packages pinned}
+  - {policy: REPRO-13, file: requirements.txt, note: all 8 packages pinned}
   - {policy: REPRO-6, file: MarketRate_Pipeline/02_TransformData.py, note: np.random.seed(42) set}
+  # REPRO-14 (raw data immutability, split out of ARCH-12): every stage writes
+  # to a different layer than it reads, so nothing is written over its source
+  - {policy: REPRO-14, file: MarketRate_Pipeline/01_IngestData.py, note: reads bronze, writes silver}
+  - {policy: REPRO-14, file: MarketRate_Pipeline/02_TransformData.py, note: reads silver, writes gold}
+  - {policy: REPRO-14, file: MarketRate_Pipeline/03_LoadToWarehouse.py, note: reads gold, writes nothing back}
   # CI restricted to master/develop with a reviewer requirement
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only, minimumApprovers 1}
   # PascalCase, approved Reporting schema, correct Dim/Fact suffix position

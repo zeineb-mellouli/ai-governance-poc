@@ -19,7 +19,7 @@ expect_violations:
 expect_clean:
   # the central case
   - {policy: REPRO-6, file: CreditScoring_Pipeline/02_TrainScoringModel.py, note: global np.random.seed(42) makes train_test_split deterministic}
-  - {policy: REPRO-6, file: requirements.txt, note: all four packages pinned}
+  - {policy: REPRO-13, file: requirements.txt, note: all four packages pinned}
   # 01 validates properly
   - {policy: DQ-1, file: CreditScoring_Pipeline/01_IngestApplications.py, note: asserts on income, duplicates, and label domain}
   - {policy: ARCH-12, file: CreditScoring_Pipeline/01_IngestApplications.py, note: bronze -> silver with validation}

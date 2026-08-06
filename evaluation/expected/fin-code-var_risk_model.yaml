@@ -19,7 +19,7 @@ expect_violations:
   - {policy: OPS-2, file: Risk_Pipeline/02_VolatilityModel.py, note: print() only, no logging}
 
   # configuration
-  - {policy: REPRO-6, file: requirements.txt, note: scikit-learn and statsmodels unpinned (partial pinning is not compliant)}
+  - {policy: REPRO-13, file: requirements.txt, note: scikit-learn and statsmodels unpinned (partial pinning is not compliant)}
   - {policy: GIT-8, file: azure-pipelines.yml, note: trigger includes hotfix-var-breach-mar24}
 
   # committed trader contact data

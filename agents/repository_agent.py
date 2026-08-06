@@ -147,9 +147,13 @@ def scan(repo_path: str) -> RepositorySnapshot:
     files: list[FileRecord] = []
     has_readme = False
 
+    # os.walk yields directory entries in filesystem order, which is neither
+    # sorted nor stable as files are added and removed. The holistic pass fills a
+    # fixed character budget in this order and drops whatever no longer fits, so
+    # an unsorted walk decides which files that pass is even allowed to see.
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-        for filename in filenames:
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for filename in sorted(filenames):
             file_path = Path(dirpath) / filename
             rel_path = file_path.relative_to(root).as_posix()
             suffix = file_path.suffix.lower()

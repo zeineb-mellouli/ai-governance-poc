@@ -28,7 +28,7 @@ expect_clean:
   - {policy: NAM-5, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: 03_ stage prefix}
   # seed is set explicitly and passed to the split
   - {policy: REPRO-6, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: np.random.seed and random_state=RANDOM_STATE}
-  - {policy: REPRO-6, file: requirements.txt, note: all five packages pinned}
+  - {policy: REPRO-13, file: requirements.txt, note: all five packages pinned}
   # 02 is the quality gate and does validate
   - {policy: DQ-1, file: Treasury_Pipeline/02_ValidateAndTransform.py, note: asserts on duplicates and null amounts}
   # all three stages log to file, including the error path in 01
