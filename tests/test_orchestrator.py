@@ -95,6 +95,48 @@ def test_deterministic_naming_violations_do_not_reach_the_review_queue():
     assert all(f.remediation.fix.startswith("git mv ") for f in fixed)
 
 
+def test_finding_count_does_not_depend_on_what_the_model_says():
+    """The report's shape is a function of the file list alone.
+
+    Regression: the per-file grid was fixed, but _dedupe_holistic dropped rows,
+    so the whole-repo pass contributed between zero and one row per policy
+    depending on how many policies the model chose to speak about. Two runs of
+    one repository still produced reports of different sizes.
+    """
+    repo = "sample_repos/compliant/ops-code-market_rate"
+    clients = [
+        FakeOpenAIClient(),
+        FakeOpenAIClient(verdicts_by_path_substring={
+            "02_TransformData.py": [verdict("REPRO-6", violation=False)]}),
+        FakeOpenAIClient(holistic_verdicts=[verdict("DM-7", violation=False)]),
+        FakeOpenAIClient(holistic_verdicts=[
+            verdict("DM-7", violation=False), verdict("DQ-1", violation=False)]),
+        FakeOpenAIClient(holistic_verdicts=[verdict("ARCH-12", quote="bronze")]),
+    ]
+
+    counts = {len(run_audit(repo, client=c, samples=1).findings) for c in clients}
+    assert len(counts) == 1, f"finding count varied with model output: {sorted(counts)}"
+
+
+def test_holistic_duplicate_is_neutralised_not_dropped():
+    """A duplicate whole-repo verdict keeps its row but stops counting."""
+    repo = "sample_repos/non_compliant/FinalProject"
+    client = FakeOpenAIClient(
+        verdicts_by_path_substring={
+            "File path: final_v2_ACTUAL.py": [verdict("ARCH-12", quote='pd.read_csv("bronze/')],
+        },
+        holistic_verdicts=[verdict("ARCH-12", quote="bronze", evidence="repo-wide echo")],
+    )
+
+    report = run_audit(repo, client=client, samples=1)
+    repo_level_arch12 = [
+        f for f in report.findings if f.policy_id == "ARCH-12" and f.file_path is None
+    ]
+    assert len(repo_level_arch12) == 1
+    assert repo_level_arch12[0].status == FindingStatus.NOT_APPLICABLE
+    assert "already reported by the per-file pass" in repo_level_arch12[0].evidence
+
+
 def test_report_records_the_serving_backend_fingerprint():
     report = run_audit(NON_COMPLIANT_REPO, client=FakeOpenAIClient())
     assert report.model_fingerprints == [FAKE_FINGERPRINT]

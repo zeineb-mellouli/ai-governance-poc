@@ -1060,20 +1060,53 @@ def _evaluate_repo_holistic(
     return _vote(drawn), errors
 
 
-def _dedupe_holistic(per_file_findings: list[Finding], holistic_findings: list[Finding]) -> list[Finding]:
-    """Drop a holistic finding when a per-file check already flagged the same policy as NON_COMPLIANT.
+def _dedupe_holistic(
+    per_file_findings: list[Finding],
+    holistic_findings: list[Finding],
+    repository_only: set[str],
+) -> list[Finding]:
+    """Neutralise duplicate whole-repo verdicts without changing how many rows there are.
 
-    Keeps holistic findings that surface something per-file checks structurally
-    can't see -- an absence across the whole repo, or a cross-file inconsistency.
-    A holistic NOT_APPLICABLE is dropped outright: the per-file grid already
-    records that policy for every file, so keeping it would double-count the
-    denominator of any compliance rate.
+    An earlier version *dropped* rows here, which quietly undid the fixed-grid
+    guarantee: the holistic pass contributed somewhere between zero and one row
+    per policy depending on how many policies the model chose to speak about, so
+    two runs of the same repository still produced reports of different sizes.
+
+    Every holistic verdict is now kept as a row. A row is neutralised to
+    NOT_APPLICABLE -- which is excluded from the compliance-rate denominator --
+    when it would duplicate the per-file pass:
+
+      * the policy is file-scoped and the holistic verdict is not a violation,
+        so it adds nothing the per-file grid does not already record; or
+      * a per-file check already flagged that policy NON_COMPLIANT.
+
+    A repository-scoped policy (DM-7) keeps its verdict either way: no other pass
+    evaluates it. A file-scoped policy keeps a NON_COMPLIANT verdict only when no
+    per-file check found it -- that is the cross-file finding this pass exists for.
     """
     already_flagged = {f.policy_id for f in per_file_findings if f.status == FindingStatus.NON_COMPLIANT}
-    return [
-        f for f in holistic_findings
-        if f.policy_id not in already_flagged and f.status != FindingStatus.NOT_APPLICABLE
-    ]
+
+    kept: list[Finding] = []
+    for finding in holistic_findings:
+        keeps_verdict = finding.policy_id in repository_only or (
+            finding.status == FindingStatus.NON_COMPLIANT
+            and finding.policy_id not in already_flagged
+        )
+        if keeps_verdict or finding.status == FindingStatus.NOT_APPLICABLE:
+            kept.append(finding)
+            continue
+
+        reason = (
+            "already reported by the per-file pass"
+            if finding.policy_id in already_flagged
+            else "adds nothing beyond the per-file pass for this policy"
+        )
+        kept.append(finding.model_copy(update={
+            "status": FindingStatus.NOT_APPLICABLE,
+            "evidence": f"{finding.evidence}  [not counted at repository level: {reason}]",
+        }))
+
+    return kept
 
 
 def audit(
@@ -1114,7 +1147,7 @@ def audit(
         holistic, holistic_errors = _evaluate_repo_holistic(
             snapshot, collection, client, policies_by_id, fingerprints, samples
         )
-        findings.extend(_dedupe_holistic(findings, holistic))
+        findings.extend(_dedupe_holistic(findings, holistic, _repository_only_ids(policies_by_id)))
         errors.extend(holistic_errors)
     except Exception as exc:  # noqa: BLE001 - the whole-repo pass failing must not lose per-file findings
         errors.append(f"Auditor Agent failed on whole-repo pass: {exc}")
