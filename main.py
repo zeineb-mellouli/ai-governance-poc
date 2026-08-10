@@ -1,5 +1,6 @@
 """CLI entrypoint for the runtime AGA audit pipeline (Git-only path)."""
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,7 +13,12 @@ load_dotenv()
 
 from agents import gate  # noqa: E402
 from agents.auditor_agent import _resolve_samples as resolve_samples  # noqa: E402
-from agents.orchestrator import run_audit, write_reports  # noqa: E402 - must load .env before importing agents
+from agents.orchestrator import (  # noqa: E402 - must load .env before importing agents
+    load_reports,
+    run_audit,
+    write_batch_html,
+    write_reports,
+)
 
 app = typer.Typer()
 console = Console()
@@ -81,6 +87,8 @@ def audit(
     fail_on_grade: gate.GradeGate = typer.Option(None, "--fail-on-grade", case_sensitive=False,
                                                  help=FAIL_ON_GRADE_HELP),
     fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
+    open_dashboard: bool = typer.Option(False, "--open",
+                                        help="Open the interactive dashboard on this repository afterwards."),
 ) -> None:
     """Run Repository -> Auditor -> Remediation against a local repo and write a compliance report."""
     report = run_audit(repo, samples=samples)
@@ -95,6 +103,12 @@ def audit(
 
     result = gate.evaluate(report, fail_on, fail_on_grade, fail_on_error)
     _render_gate(result, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
+
+    if open_dashboard:
+        # Before the gate exits: a failing audit is exactly when you want to look
+        # at the findings, so the dashboard must not be skipped by a non-zero exit.
+        _launch_dashboard(out, report.repo_name)
+
     if not result.passed:
         raise typer.Exit(result.exit_code)
 
@@ -213,6 +227,9 @@ def batch(
 
     console.print(table)
     console.print(f"\nReports written to: [bold]{Path(out).resolve()}[/bold]")
+    written = load_reports(out)
+    if written:
+        console.print(f"Dashboard:          [bold]{write_batch_html(written, out)}[/bold]")
     if failed:
         console.print(f"[red]{failed} repo(s) crashed during audit.[/red]")
 
@@ -220,6 +237,58 @@ def batch(
     _render_gate(combined, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
     if not combined.passed:
         raise typer.Exit(combined.exit_code)
+
+
+DASHBOARD_SCRIPT = Path(__file__).parent / "dashboard.py"
+
+
+def _launch_dashboard(reports_dir: str, repo: str | None = None) -> None:
+    """Hand the terminal over to Streamlit. Blocks until Ctrl+C, as a server should."""
+    command = [sys.executable, "-m", "streamlit", "run", str(DASHBOARD_SCRIPT),
+               "--", "--reports", reports_dir]
+    if repo:
+        command += ["--repo", repo]
+    console.print(f"\n[bold]Opening dashboard[/bold] — Ctrl+C to stop\n[dim]{' '.join(command)}[/dim]\n")
+    try:
+        subprocess.run(command, check=False)
+    except FileNotFoundError:
+        console.print("[red]Streamlit is not installed.[/red]  pip install -r requirements.txt")
+        raise typer.Exit(1)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped.[/dim]")
+
+
+@app.command()
+def dashboard(
+    reports: str = typer.Option("reports", "--reports", help="Directory holding <repo>/machine_report.json"),
+    repo: str = typer.Option(None, "--repo", help="Open this repository first"),
+) -> None:
+    """Open the interactive dashboard for an existing run. Makes no API calls."""
+    if not load_reports(reports):
+        console.print(f"[red]No machine_report.json found under {reports}[/red]")
+        raise typer.Exit(1)
+    _launch_dashboard(reports, repo)
+
+
+@app.command()
+def html(
+    reports: str = typer.Option("reports", "--reports", help="Directory holding <repo>/machine_report.json"),
+    out: str = typer.Option("", "--out", help="Where to write index.html (defaults to --reports)"),
+    title: str = typer.Option("Governance audit", "--title", help="Page heading"),
+) -> None:
+    """Render one self-contained HTML dashboard from an existing run. No API calls."""
+    loaded = load_reports(reports)
+    if not loaded:
+        console.print(f"[red]No machine_report.json found under {reports}[/red]")
+        raise typer.Exit(1)
+
+    from agents.html_report import render_batch_html
+
+    destination = Path(out or reports) / "index.html"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(render_batch_html(loaded, title=title), encoding="utf-8")
+    size_kb = destination.stat().st_size / 1024
+    console.print(f"[green]{len(loaded)} repositories[/green] → [bold]{destination}[/bold] ({size_kb:.0f} KB)")
 
 
 def _fmt(value: float | None) -> str:

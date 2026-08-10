@@ -9,6 +9,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from agents import auditor_agent, remediation_agent, repository_agent
+from agents.html_report import render_batch_html
 from agents.llm_client import get_client
 from agents.schemas import ComplianceReport, Finding, FindingStatus, RemediationStatus
 
@@ -63,6 +64,25 @@ def run_audit(
 
     report.model_fingerprints = sorted(set(fingerprints))
     return report
+
+
+def load_reports(reports_dir: str | Path) -> list[ComplianceReport]:
+    """Read every machine_report.json under a reports directory.
+
+    Lets the HTML page be regenerated from a finished run without re-auditing --
+    layout can be iterated on for free.
+    """
+    reports = []
+    for path in sorted(Path(reports_dir).glob("*/machine_report.json")):
+        reports.append(ComplianceReport.model_validate_json(path.read_text(encoding="utf-8")))
+    return reports
+
+
+def write_batch_html(reports: list[ComplianceReport], out_base_dir: str) -> Path:
+    path = Path(out_base_dir) / "index.html"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_batch_html(reports), encoding="utf-8")
+    return path
 
 
 def write_reports(report: ComplianceReport, out_base_dir: str) -> tuple[Path, Path]:
