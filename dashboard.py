@@ -309,10 +309,12 @@ def _audit_panel(reports_dir: str) -> None:
     with st.sidebar.expander("Audit a repository", expanded=False):
         repo_path = st.text_input("Repository path", "", placeholder="/path/to/repo",
                                   key="audit_repo_path")
-        samples = st.select_slider(
-            "Samples per check (k)", options=[1, 3, 5], value=3,
+        samples = st.number_input(
+            "Samples per check (k)", min_value=1, max_value=5, value=3, step=1,
             help="Each check runs k times and the verdict is the majority. "
-                 "k=1 is fastest and measures no disagreement.",
+                 "k=1 is fastest but measures no disagreement, so every confidence "
+                 "reads 100%. Capped at 5: cost is linear in k and agreement past "
+                 "5 runs tells you nothing 3 did not.",
         )
         if st.button("Run audit", type="primary", use_container_width=True):
             if not repo_path or not Path(repo_path).is_dir():
