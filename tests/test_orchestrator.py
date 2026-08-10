@@ -164,8 +164,9 @@ def test_clean_repo_scores_a_full_pass():
     report = _report(*[_finding(f"P-{i}", "HIGH", FindingStatus.COMPLIANT) for i in range(20)])
     score = report.compliance_score
     assert score["weighted_pass_rate"] == 1.0
-    assert score["grade"] == "PASS"
-    assert score["gate"] is None
+    assert score["high_failures"] == 0
+    # No verdict is derived: the report measures, it does not decide.
+    assert "grade" not in score
 
 
 def test_not_applicable_is_excluded_from_the_denominator():
@@ -178,31 +179,36 @@ def test_not_applicable_is_excluded_from_the_denominator():
     assert report.compliance_score["weight_possible"] == 3
 
 
-def test_one_high_violation_caps_the_grade_at_fail_however_good_the_rate():
-    """The gate is the point: one hardcoded credential must not drown in 300 passes."""
+def test_a_high_rate_does_not_hide_a_high_severity_violation():
+    """One hardcoded credential must stay visible among 300 passing checks.
+
+    With no grade to encode it, the severity counts carry that signal -- which is
+    why they are reported next to the rate everywhere it appears.
+    """
     report = _report(
         *[_finding(f"P-{i}", "LOW", FindingStatus.COMPLIANT) for i in range(300)],
         _finding("SEC-3", "HIGH", FindingStatus.NON_COMPLIANT),
     )
     score = report.compliance_score
     assert score["weighted_pass_rate"] > 0.98
-    assert score["grade"] == "FAIL"
-    assert "HIGH-severity" in score["gate"]
+    assert score["high_failures"] == 1
 
 
-def test_three_medium_violations_cap_the_grade_at_needs_work():
+def test_violations_are_counted_by_severity():
     report = _report(
-        *[_finding(f"P-{i}", "LOW", FindingStatus.COMPLIANT) for i in range(300)],
+        _finding("SEC-3", "HIGH", FindingStatus.NON_COMPLIANT),
         *[_finding(f"M-{i}", "MEDIUM", FindingStatus.NON_COMPLIANT) for i in range(3)],
+        *[_finding(f"L-{i}", "LOW", FindingStatus.NON_COMPLIANT) for i in range(2)],
     )
-    assert report.compliance_score["grade"] == "NEEDS_WORK"
+    score = report.compliance_score
+    assert (score["high_failures"], score["medium_failures"], score["low_failures"]) == (1, 3, 2)
 
 
-def test_score_separates_a_small_dirty_repo_from_a_large_clean_one():
+def test_rate_is_normalised_for_repository_size():
     """The failure of the old summed risk_score: repo size moved it as much as quality.
 
     345 checks with 5 violations used to score within 3 points of 66 checks with
-    5 violations. A rate plus a gate puts them in different categories.
+    5 violations. A rate over applicable checks separates them.
     """
     large_clean = _report(
         *[_finding(f"P-{i}", "MEDIUM", FindingStatus.COMPLIANT) for i in range(340)],
@@ -212,9 +218,9 @@ def test_score_separates_a_small_dirty_repo_from_a_large_clean_one():
         *[_finding(f"P-{i}", "MEDIUM", FindingStatus.COMPLIANT) for i in range(60)],
         *[_finding(f"H-{i}", "HIGH", FindingStatus.NON_COMPLIANT) for i in range(2)],
     )
-    assert large_clean.compliance_score["grade"] == "PASS"
-    assert small_dirty.compliance_score["grade"] == "FAIL"
     assert large_clean.compliance_score["weighted_pass_rate"] > small_dirty.compliance_score["weighted_pass_rate"]
+    assert large_clean.compliance_score["high_failures"] == 0
+    assert small_dirty.compliance_score["high_failures"] == 2
 
 
 def test_undecided_verdicts_are_excluded_and_surfaced():

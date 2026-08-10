@@ -19,13 +19,14 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
-from agents.orchestrator import load_reports
-from agents.schemas import ComplianceReport, FindingStatus
+load_dotenv()  # the audit needs the Azure credentials in this process too
+
+from agents.orchestrator import load_reports, run_audit, write_reports  # noqa: E402
+from agents.schemas import ComplianceReport, FindingStatus  # noqa: E402
 
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-GRADE_ORDER = {"FAIL": 0, "NEEDS_WORK": 1, "PASS": 2, "NOT_SCORED": 3}
-GRADE_COLOR = {"PASS": "#1f6f4a", "NEEDS_WORK": "#8a5a00", "FAIL": "#b3261e", "NOT_SCORED": "#6b7684"}
 SEVERITY_COLOR = {"HIGH": "#b3261e", "MEDIUM": "#8a5a00", "LOW": "#4a5568"}
 
 ALL_REPOS = "All repositories"
@@ -72,27 +73,26 @@ def render_overview(reports: list[ComplianceReport]) -> None:
 
     total_violations = sum(r.summary["by_status"].get("NON_COMPLIANT", 0) for r in reports)
     high = sum(r.compliance_score["high_failures"] for r in reports)
-    passing = sum(1 for r in reports if r.compliance_score["grade"] == "PASS")
-    action = sum(r.summary["needs_human_attention"] for r in reports)
 
-    cols = st.columns(5)
+    cols = st.columns(3)
     cols[0].metric("Repositories", len(reports))
     cols[1].metric("Violations", total_violations)
     cols[2].metric("High severity", high)
-    cols[3].metric("Passing", f"{passing}/{len(reports)}")
-    cols[4].metric("Need a person", action)
 
     rows = []
+    # Worst first: most high-severity violations, then lowest pass rate.
     for report in sorted(
         reports,
-        key=lambda r: (GRADE_ORDER.get(r.compliance_score["grade"], 9),
+        key=lambda r: (-r.compliance_score["high_failures"],
                        r.compliance_score["weighted_pass_rate"] or 0.0),
     ):
         score, counts = report.compliance_score, report.summary["by_status"]
         rows.append({
             "Repository": report.repo_name,
-            "Grade": score["grade"],
-            "Pass rate": score["weighted_pass_rate"] or 0.0,
+            "High": score["high_failures"],
+            # Stored 0-100, not 0-1: ProgressColumn applies `format` to the raw
+            # value, so a 0-1 fraction renders 0.397 as "0.4%" instead of "39.7%".
+            "Pass rate": (score["weighted_pass_rate"] or 0.0) * 100,
             "Violations": counts.get("NON_COMPLIANT", 0),
             "Passed": counts.get("COMPLIANT", 0),
             "N/A": counts.get("NOT_APPLICABLE", 0),
@@ -104,24 +104,38 @@ def render_overview(reports: list[ComplianceReport]) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
-            # A bar, not a bare number: 41% and 90% both grade FAIL, and the
-            # grade alone makes a wreck and a single hardcoded secret look alike.
+            # A bar, not a bare number: it is the only cross-repo comparison on
+            # the page now that there is no grade to sort by.
             "Pass rate": st.column_config.ProgressColumn(
-                "Weighted pass rate", format="%.1f%%", min_value=0.0, max_value=1.0,
+                "Weighted pass rate", format="%.1f%%", min_value=0.0, max_value=100.0,
             ),
         },
     )
-    st.caption(
-        "Not-applicable checks are excluded from the pass rate — a check correctly "
-        "skipped is not a check passed. Undecided verdicts are excluded from both "
-        "sides and listed per repository."
-    )
+    with st.expander("What the weighted pass rate means"):
+        st.markdown(
+            "Of the checks that **applied** to a repository, the share of "
+            "severity-weighted checks it passed:\n\n"
+            "```\nrate = weight of passing checks / weight of (passing + failing) checks\n"
+            "HIGH = 3   MEDIUM = 2   LOW = 1\n```\n"
+            "Weighting means one failed HIGH costs as much as three failed LOWs, so "
+            "a pile of naming violations cannot outweigh a hardcoded credential.\n\n"
+            "**Not-applicable checks are excluded** — a check correctly skipped is not "
+            "a check passed, and counting them would let a repository score well by "
+            "having little the policies cover. **Undecided verdicts are excluded from "
+            "both sides** and listed per repository; they are not evidence either way.\n\n"
+            "There is deliberately no pass/fail grade. The rate is a measurement; "
+            "whether a repository is acceptable depends on which policies matter to "
+            "you, and the CI gate decides that explicitly with `--fail-on <severity>`. "
+            "Read the rate together with the high-severity count — a repository at 95% "
+            "with one hardcoded credential is not the same as one at 95% with a "
+            "naming violation."
+        )
 
 
-def render_finding(finding, show_agreement: bool = True) -> None:
+def render_finding(finding, show_agreement: bool = True, header: str | None = None) -> None:
     sentence, quote = _split_evidence(finding.evidence)
     location = finding.file_path or "repository-level"
-    header = f"{finding.severity} · {finding.policy_id} · {location}"
+    header = header or f"{finding.severity} · {finding.policy_id} · {location}"
 
     with st.expander(header, expanded=False):
         st.markdown(
@@ -151,7 +165,17 @@ def render_finding(finding, show_agreement: bool = True) -> None:
             if finding.remediation_note:
                 st.write(finding.remediation_note)
 
-        if show_agreement and finding.confidence_score < 1.0:
+        if show_agreement and finding.dissent:
+            # The minority verdict, kept verbatim. Reporting only that the runs
+            # disagreed gave a reader nothing to weigh; the argument for the
+            # other side is the whole reason to look at a near miss.
+            d = finding.dissent
+            other_sentence, other_quote = _split_evidence(d.evidence)
+            st.caption(f"Dissenting verdict — {d.samples} run(s) said {d.status.value}")
+            st.info(other_sentence or "(no evidence given)")
+            if other_quote:
+                st.code(other_quote, language=None)
+        elif show_agreement and finding.confidence_score < 1.0:
             st.warning(f"Samples agreed {finding.confidence_score:.0%} of the time.")
 
         if finding.reasoning:
@@ -161,18 +185,18 @@ def render_finding(finding, show_agreement: bool = True) -> None:
 
 def render_repo(report: ComplianceReport) -> None:
     score, summary = report.compliance_score, report.summary
-    grade = score["grade"]
 
-    st.markdown(
-        f"## {report.repo_name} &nbsp; {_chip(grade.replace('_', ' '), GRADE_COLOR.get(grade, '#6b7684'))}",
-        unsafe_allow_html=True,
-    )
+    chips = "".join(
+        _chip(f"{n} {name}", SEVERITY_COLOR[name.upper()])
+        for n, name in ((score["high_failures"], "HIGH"),
+                        (score["medium_failures"], "MEDIUM"),
+                        (score["low_failures"], "LOW")) if n
+    ) or _chip("no violations", "#1f6f4a")
+    st.markdown(f"## {report.repo_name} &nbsp; {chips}", unsafe_allow_html=True)
     if score["weighted_pass_rate"] is not None:
         st.progress(score["weighted_pass_rate"],
                     text=f"Weighted pass rate {score['weighted_pass_rate']:.1%} "
                          f"({score['weight_earned']}/{score['weight_possible']})")
-    if score["gate"]:
-        st.error(score["gate"])
 
     cols = st.columns(4)
     cols[0].metric("Violations", summary["by_status"].get("NON_COMPLIANT", 0))
@@ -192,25 +216,26 @@ def render_repo(report: ComplianceReport) -> None:
 
     # --- filters, in the sidebar so they apply to whatever is on screen
     st.sidebar.markdown("### Filter violations")
-    severities = st.sidebar.multiselect(
-        "Severity", ["HIGH", "MEDIUM", "LOW"], default=["HIGH", "MEDIUM", "LOW"],
-    )
+    # Streamlit renders its colour markdown in widget labels, so the severity
+    # scale reads red -> amber -> grey without injecting CSS at its internals.
+    severities = [
+        level for level, colour in (("HIGH", "red"), ("MEDIUM", "orange"), ("LOW", "gray"))
+        if st.sidebar.checkbox(
+            f":{colour}[**{level}**] &nbsp;·&nbsp; {sum(1 for f in violations if f.severity == level)}",
+            value=True, key=f"sev_{level}",
+        )
+    ]
     policies = sorted({f.policy_id for f in violations})
     chosen = st.sidebar.multiselect("Policy", policies, default=policies)
-    needle = st.sidebar.text_input("Search evidence and file paths", "")
 
     shown = [
         f for f in violations
         if f.severity in severities and f.policy_id in chosen
-        and (not needle
-             or needle.lower() in f.evidence.lower()
-             or needle.lower() in (f.file_path or "").lower())
     ]
 
-    tab_v, tab_u, tab_all, tab_run = st.tabs([
+    tab_v, tab_u, tab_run = st.tabs([
         f"Violations ({len(shown)})",
         f"Not certain ({len(undecided) + len(near_misses)})",
-        f"Every check ({len(report.findings)})",
         "Run",
     ])
 
@@ -231,34 +256,34 @@ def render_repo(report: ComplianceReport) -> None:
     with tab_u:
         st.caption(
             f"Each check runs {report.audit_samples} times and the verdict is the "
-            "majority. Confidence is the share of runs that agreed — it measures "
-            "self-consistency, not correctness."
+            "majority. These are the checks the runs did not agree on — the "
+            "dissenting verdict is shown so you can weigh it yourself. Agreement "
+            "measures self-consistency, not correctness."
         )
+
+        def _unsure_header(f) -> str:
+            k = report.audit_samples
+            agreed = round(f.confidence_score * k)
+            verdict = "clean" if f.status == FindingStatus.COMPLIANT else f.status.value
+            other = f" · {f.dissent.samples} said {f.dissent.status.value}" if f.dissent else ""
+            where = f.file_path or "repository-level"
+            return f"{agreed}/{k} runs said {verdict}{other}  —  {f.policy_id} · {where}"
+
         if undecided:
             st.markdown(f"**Could not be settled** — {len(undecided)}")
+            st.caption("No verdict won a majority, so the check is unresolved.")
             for finding in undecided:
-                render_finding(finding)
+                render_finding(finding, header=_unsure_header(finding))
         if near_misses:
             st.markdown(f"**Passed, but not unanimously** — {len(near_misses)}")
-            st.caption("A check most runs called clean and at least one called a violation.")
+            st.caption(
+                "Most runs called these clean and at least one called a violation. "
+                "They are the likeliest place a real violation was missed."
+            )
             for finding in near_misses:
-                render_finding(finding)
+                render_finding(finding, header=_unsure_header(finding))
         if not undecided and not near_misses:
-            st.success("Every check was unanimous across all samples.")
-
-    with tab_all:
-        st.dataframe(
-            [{
-                "Policy": f.policy_id,
-                "Severity": f.severity,
-                "Status": f.status.value,
-                "File": f.file_path or "(repository-level)",
-                "Agreement": f.confidence_score,
-                "Evidence": _split_evidence(f.evidence)[0][:160],
-            } for f in report.findings],
-            use_container_width=True, hide_index=True,
-            column_config={"Agreement": st.column_config.NumberColumn(format="%.0f%%")},
-        )
+            st.success("Every check was unanimous across all runs.")
 
     with tab_run:
         st.write(f"**Repository path** `{report.repo_path}`")
@@ -279,6 +304,40 @@ def render_repo(report: ComplianceReport) -> None:
             st.success("The run completed with no errors.")
 
 
+def _audit_panel(reports_dir: str) -> None:
+    """Run a new audit from the UI, so a demo is not limited to what is on disk."""
+    with st.sidebar.expander("Audit a repository", expanded=False):
+        repo_path = st.text_input("Repository path", "", placeholder="/path/to/repo",
+                                  key="audit_repo_path")
+        samples = st.select_slider(
+            "Samples per check (k)", options=[1, 3, 5], value=3,
+            help="Each check runs k times and the verdict is the majority. "
+                 "k=1 is fastest and measures no disagreement.",
+        )
+        if st.button("Run audit", type="primary", use_container_width=True):
+            if not repo_path or not Path(repo_path).is_dir():
+                st.error("That path is not a directory.")
+                return
+            bar = st.progress(0.0, text="Reading the repository…")
+
+            def on_progress(done: int, total: int, label: str) -> None:
+                bar.progress(min(done / total, 1.0), text=f"{done}/{total} · {label}")
+
+            try:
+                report = run_audit(repo_path, samples=samples, progress=on_progress)
+                write_reports(report, reports_dir)
+            except Exception as exc:  # noqa: BLE001 - surface it rather than a stack trace
+                bar.empty()
+                st.error(f"The audit could not run: {exc}")
+                return
+            bar.empty()
+            violations = report.summary["by_status"].get("NON_COMPLIANT", 0)
+            st.success(f"{report.repo_name}: {violations} violation(s)")
+            # Land on the repository that was just audited.
+            st.session_state["selected_repo"] = report.repo_name
+            st.rerun()
+
+
 # --- app ---------------------------------------------------------------------
 
 
@@ -289,6 +348,8 @@ def main() -> None:
     st.sidebar.title("Governance audit")
     reports_dir = st.sidebar.text_input("Reports directory", args.reports)
 
+    _audit_panel(reports_dir)
+
     reports = load_reports(reports_dir)
     if not reports:
         st.warning(f"No `machine_report.json` found under `{reports_dir}`.")
@@ -297,7 +358,8 @@ def main() -> None:
         return
 
     names = [r.repo_name for r in reports]
-    default = args.repo if args.repo in names else ALL_REPOS
+    wanted = st.session_state.pop("selected_repo", None) or args.repo
+    default = wanted if wanted in names else ALL_REPOS
     choice = st.sidebar.selectbox(
         "Repository", [ALL_REPOS, *names], index=([ALL_REPOS, *names]).index(default),
     )

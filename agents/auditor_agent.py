@@ -50,6 +50,7 @@ from openai import OpenAI
 from agents.llm_client import REQUEST_SEED, chat_json, get_client
 from agents.repository_agent import TRUNCATION_NOTICE
 from agents.schemas import (
+    Dissent,
     FileRecord,
     Finding,
     FindingStatus,
@@ -880,11 +881,27 @@ def _vote(samples: list[list[Finding]]) -> list[Finding]:
         agreement = round(top_count / len(samples), 3)
         split = ", ".join(f"{s.value}x{counts[s]}" for s in sorted(counts, key=lambda s: s.value))
 
+        # Whatever the outcome, keep what the losing samples argued. Discarding
+        # it left a non-unanimous verdict able to report only that disagreement
+        # occurred, which is not enough for anyone to act on.
+        def _dissent_from(exclude: FindingStatus) -> Dissent | None:
+            losers = [f for f in candidates if f.status != exclude]
+            if not losers:
+                return None
+            runner_up = Counter(f.status for f in losers).most_common(1)[0][0]
+            spoke = next(f for f in losers if f.status == runner_up)
+            return Dissent(
+                status=runner_up,
+                samples=counts[runner_up],
+                evidence=spoke.evidence,
+            )
+
         if len(winners) > 1:
             chosen = candidates[0]
             voted.append(chosen.model_copy(update={
                 "status": FindingStatus.NEEDS_REVIEW,
                 "confidence_score": agreement,
+                "dissent": _dissent_from(chosen.status),
                 "evidence": (
                     f"{chosen.evidence}  [routed to review: {len(samples)} samples split {split}]"
                 ),
@@ -895,6 +912,7 @@ def _vote(samples: list[list[Finding]]) -> list[Finding]:
         note = "" if top_count == len(samples) else f"  [{top_count}/{len(samples)} samples agreed: {split}]"
         voted.append(chosen.model_copy(update={
             "confidence_score": agreement,
+            "dissent": _dissent_from(winners[0]),
             "evidence": f"{chosen.evidence}{note}",
         }))
 
@@ -1123,6 +1141,7 @@ def audit(
     client: OpenAI | None = None,
     fingerprints: list[str] | None = None,
     samples: int | None = None,
+    progress=None,
 ) -> tuple[list[Finding], list[str]]:
     """Evaluate every file, plus repo-level and whole-repo checks, against the policy library.
 
@@ -1142,7 +1161,10 @@ def audit(
 
     findings.extend(_evaluate_file_names(snapshot))
 
-    for file in snapshot.files:
+    total = len(snapshot.files) + 1  # every file, plus the whole-repo pass
+    for index, file in enumerate(snapshot.files):
+        if progress:
+            progress(index, total, file.path)
         try:
             file_findings, file_errors = _evaluate_file(
                 file, collection, client, policies_by_id, fingerprints, samples
@@ -1152,6 +1174,8 @@ def audit(
         except Exception as exc:  # noqa: BLE001 - a single bad file must not abort the audit
             errors.append(f"Auditor Agent failed on {file.path}: {exc}")
 
+    if progress:
+        progress(total - 1, total, "whole-repository pass")
     try:
         holistic, holistic_errors = _evaluate_repo_holistic(
             snapshot, collection, client, policies_by_id, fingerprints, samples
@@ -1161,4 +1185,6 @@ def audit(
     except Exception as exc:  # noqa: BLE001 - the whole-repo pass failing must not lose per-file findings
         errors.append(f"Auditor Agent failed on whole-repo pass: {exc}")
 
+    if progress:
+        progress(total, total, "done")
     return findings, errors

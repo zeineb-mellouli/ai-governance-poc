@@ -40,7 +40,7 @@ Any dataset published to the gold/reporting layer is consumed by people and syst
 
 **Rule:**
 
-This is a whole-repository check. Enumerate every gold/reporting/curated/ datamart output path the repository writes, and every CREATE TABLE with a Dim or Fact suffix. For each, look for a grain statement in ANY file: the writing module's docstring or comments, the README, or the table's DDL. A grain statement names what one row IS, in the form "one row per X" (optionally per Y) -- "one row per counterparty per day". A statement of what the table is FOR is a purpose, not a grain. Neither is a table's name or a descriptive adjective: "Daily VaR breach fact table" and "the daily exposure report" say nothing about whether one row is per desk, per instrument, or per breach, so they do NOT satisfy this. Accept only an explicit statement of what a single row represents. COMPLIANT if every such output has a grain statement somewhere. NON_COMPLIANT if at least one has none anywhere -- name the output path and the files you checked. Does not apply to bronze, silver, staging, or logs, nor to exploratory notebooks.
+This is a whole-repository check. FIRST decide whether it applies at all. Enumerate the repository's gold/reporting/curated/datamart output paths and its CREATE TABLE statements carrying a Dim or Fact suffix. If there are NONE of either, this policy does not apply -- say so and stop. A repository that writes only to a data/ or output/ folder, with no gold layer and no data-model table, has nothing this policy governs; do not stretch an ordinary output path into a gold-layer one to find something to report. Otherwise, for each such output look for a grain statement in ANY file: the writing module's docstring or comments, the README, or the table's DDL. A grain statement names what one row IS, in the form "one row per X" (optionally per Y) -- "one row per counterparty per day". A statement of what the table is FOR is a purpose, not a grain. Neither is a table's name or a descriptive adjective: "Daily VaR breach fact table" and "the daily exposure report" say nothing about whether one row is per desk, per instrument, or per breach, so they do NOT satisfy this. Accept only an explicit statement of what a single row represents. COMPLIANT if every such output has a grain statement somewhere. NON_COMPLIANT if at least one has none anywhere -- name the output path and the files you checked. Does not apply to bronze, silver, staging, or logs, nor to exploratory notebooks.
 
 **Compliant examples:**
 
@@ -161,17 +161,18 @@ Bronze holds raw ingested data. Silver holds validated, cleansed, deduplicated d
 
 **Rule:**
 
-Treat silver, cleansed, curated, refined, staging, validated and processed as the same middle layer, whatever the folder is called, including when a README maps a folder to a layer. Violations: (1) no layer separation at all -- every write lands in one undifferentiated location, e.g. final output written back beside the raw input; (2) a layer skip -- data read from a bronze/raw path reaches a gold/reporting write without passing through a middle layer. Judge this PER DATASET: a file that reads bronze AND silver and then writes gold is still skipping for the bronze dataset, and reading silver elsewhere in the same file does not excuse it; (3) a write into the middle layer with no data quality validation immediately before it. A silver -> gold write is the correct flow. Never flag it here, even if it performs no validation and no aggregation: validation before a gold write is DQ-1's concern. There is no quality gate before gold in this policy. Does not apply to a file with no tiered storage paths, or to a pure schema definition file.
+Treat silver, cleansed, curated, refined, staging, validated and processed as the same middle layer, whatever the folder is called, including when a README maps a folder to a layer. Violations: (1) no layer separation at all -- every write lands in one undifferentiated location, e.g. final output written back beside the raw input; (2) a layer skip -- code reads a bronze/raw path and writes straight to a gold/reporting path with no middle-layer step; (3) a write ENTERING the middle layer from a bronze/raw source with no data quality validation immediately before it. Validation is the contract for entering the middle layer. A transform that reads the middle layer and writes back into it (silver -> silver) is not re-ingesting raw data and is NOT covered by this rule. A silver -> gold write is the correct flow. Never flag it here, even if it performs no validation and no aggregation: validation before a gold write is DQ-1's concern. There is no quality gate before gold in this policy. Does not apply to a file with no tiered storage paths, or to a pure schema definition file.
 
 **Compliant examples:**
 
 - `df = read('bronze/x.csv'); validate(df); write('silver/x.csv')`
 - `df = read('silver/x.csv'); write('gold/Summary.csv')`
+- `df = read('silver/a.csv'); write('silver/b.csv')  # inside the middle layer, rule 3 does not apply`
 
 **Non-compliant examples:**
 
 - `df = read('bronze/x.csv'); write('gold/Report.csv')  # skips silver`
-- `df = read('bronze/x.csv'); write('silver/x.csv')  # no validation`
+- `df = read('bronze/x.csv'); write('silver/x.csv')  # entering silver, no validation`
 
 ---
 

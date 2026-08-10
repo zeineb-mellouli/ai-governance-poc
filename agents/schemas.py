@@ -8,20 +8,19 @@ from pydantic import BaseModel, Field, computed_field
 
 SEVERITY_WEIGHT = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
-# Grades, worst-last. A repository's grade is the worse of what its pass rate
-# earns and what the severity gate allows.
-GRADE_ORDER = ["PASS", "NEEDS_WORK", "FAIL"]
-
-# Pass-rate bands. Deliberately demanding: these are checks a repository is
-# expected to satisfy by construction, not a test suite where 90% is good.
-PASS_RATE_THRESHOLD = 0.98
-NEEDS_WORK_RATE_THRESHOLD = 0.90
-
-# Severity gate. A weighted rate alone lets one hardcoded credential drown in
-# 300 passing checks, which is how a compliant-looking score hides the finding
-# that actually matters. This is the same shape as a CIS Benchmark or AWS
-# Security Hub score: a rate, plus a floor that severity can force.
-MEDIUM_FAILURES_BEFORE_CAP = 3
+# There was a PASS / NEEDS_WORK / FAIL grade here, from a weighted pass rate
+# banded at 98% and 90% with a cap forced by severity. It is gone deliberately.
+#
+# The bands were never validated against anything -- they were a first guess --
+# and on the reference corpus they graded 8 of 10 repositories FAIL, including
+# four sitting above 90% whose only high-severity finding was a single policy.
+# A verdict that lands on almost everything carries no information, and its
+# thresholds were doing more work than the evidence behind them justified.
+#
+# This tool reports; deciding what is acceptable is the reader's call, and the
+# CI gate makes it explicitly with --fail-on <severity>. What is published now
+# is the measurement -- the weighted pass rate plus counts by severity -- which
+# is a fact about the repository rather than an opinion about it.
 
 
 class FileType(str, Enum):
@@ -80,6 +79,21 @@ class Remediation(BaseModel):
     fix: str
 
 
+class Dissent(BaseModel):
+    """What the samples that lost the vote actually said.
+
+    Without this, a non-unanimous verdict can only report that disagreement
+    happened -- the minority opinion was discarded with the losing samples, so
+    "2 of 3 runs agreed" was the entire content. Keeping the dissenting verdict
+    is what makes a near-miss reviewable: a check that passed 2-1 is worth a
+    human's time only if you can read the argument for the other side.
+    """
+
+    status: FindingStatus
+    samples: int
+    evidence: str
+
+
 class Finding(BaseModel):
     policy_id: str
     title: str
@@ -98,6 +112,8 @@ class Finding(BaseModel):
     remediation: Optional[Remediation] = None
     remediation_status: RemediationStatus = RemediationStatus.NOT_REQUIRED
     remediation_note: Optional[str] = None
+    # Set only when the samples did not agree. See Dissent.
+    dissent: Optional[Dissent] = None
 
     # There was a per-finding `risk_score = SEVERITY_WEIGHT * confidence` here.
     # It is gone: once confidence became a measured agreement rate it sat at 1.0
@@ -164,7 +180,7 @@ class ComplianceReport(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def compliance_score(self) -> dict:
-        """Severity-weighted pass rate over applicable checks, plus a severity gate.
+        """Severity-weighted pass rate over applicable checks, plus severity counts.
 
         Replaces the previous practice of summing per-finding risk_score, which
         was unnormalised: a 345-check repository with 5 violations and a 66-check
@@ -176,9 +192,12 @@ class ComplianceReport(BaseModel):
         from both sides and reported separately: an undecided verdict is not
         evidence either way, and burying it in the rate would let a repository
         score well by being unreadable.
+
+        No pass/fail verdict is derived from any of this -- see the note at the
+        top of the module.
         """
         earned = possible = 0
-        high_failures = medium_failures = 0
+        high_failures = medium_failures = low_failures = 0
         undecided = 0
 
         for finding in self.findings:
@@ -192,48 +211,16 @@ class ComplianceReport(BaseModel):
                     high_failures += 1
                 elif finding.severity == "MEDIUM":
                     medium_failures += 1
+                else:
+                    low_failures += 1
             elif finding.status == FindingStatus.NEEDS_REVIEW:
                 undecided += 1
 
-        if not possible:
-            return {
-                "weighted_pass_rate": None,
-                "grade": "NOT_SCORED",
-                "gate": None,
-                "high_failures": high_failures,
-                "medium_failures": medium_failures,
-                "undecided": undecided,
-                "weight_earned": earned,
-                "weight_possible": possible,
-            }
-
-        rate = round(earned / possible, 4)
-
-        if rate >= PASS_RATE_THRESHOLD:
-            rate_grade = "PASS"
-        elif rate >= NEEDS_WORK_RATE_THRESHOLD:
-            rate_grade = "NEEDS_WORK"
-        else:
-            rate_grade = "FAIL"
-
-        if high_failures:
-            gate_grade = "FAIL"
-            gate = f"{high_failures} HIGH-severity violation(s) cap the grade at FAIL"
-        elif medium_failures >= MEDIUM_FAILURES_BEFORE_CAP:
-            gate_grade = "NEEDS_WORK"
-            gate = f"{medium_failures} MEDIUM-severity violations cap the grade at NEEDS_WORK"
-        else:
-            gate_grade = "PASS"
-            gate = None
-
-        grade = max([rate_grade, gate_grade], key=GRADE_ORDER.index)
-
         return {
-            "weighted_pass_rate": rate,
-            "grade": grade,
-            "gate": gate,
+            "weighted_pass_rate": round(earned / possible, 4) if possible else None,
             "high_failures": high_failures,
             "medium_failures": medium_failures,
+            "low_failures": low_failures,
             "undecided": undecided,
             "weight_earned": earned,
             "weight_possible": possible,

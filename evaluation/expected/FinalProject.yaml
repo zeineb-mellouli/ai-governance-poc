@@ -43,10 +43,18 @@ expect_violations:
   - {policy: NAM-5, file: data/customers.csv, note: lowercase plural stem, not CamelCase}
   - {policy: NAM-5, file: "data/ethanol market rate.csv", note: spaces in name, cryptic headers}
   - {policy: PII-4, file: data/customers.csv, note: committed name/email/phone with real-looking values}
-  # repo-level: no grain documented for any output, in any file
-  - {policy: DM-7, file: null, note: no grain statement anywhere; create_tables.sql comments describe bad naming, not row meaning}
 
 expect_clean:
+  # DM-7 governs gold-layer outputs and Dim/Fact tables. This repository has
+  # neither: it writes only to bronze/ and data/, and its tables are
+  # tbl_ethanol_market_rate and tbl_customers -- no Dim/Fact suffix. The script
+  # even prints "no gold layer, no silver layer". Having nothing worth
+  # documenting is not the same as failing to document it, and the label
+  # previously demanded a violation here while
+  # fin-code-filing_deadline_tracker.yaml demanded NOT_APPLICABLE for exactly
+  # the same situation. That contradiction was the reason DM-7 could not get
+  # above 0.50: no rule text can satisfy both.
+  - {policy: DM-7, file: null, note: no gold output and no Dim/Fact table -- nothing for DM-7 to govern}
   - {policy: SEC-3, file: Untitled.ipynb, note: no credentials in the notebook}
   - {policy: SEC-3, file: sql/create_tables.sql, note: DDL only, no credentials}
   - {policy: GIT-8, file: final_v2_ACTUAL.py, note: not a CI/CD or contribution file}

@@ -5,6 +5,7 @@ crashing the run (partial-failure handling).
 """
 
 from pathlib import Path
+from typing import Callable
 
 from openai import OpenAI
 
@@ -20,8 +21,13 @@ def run_audit(
     repo_path: str,
     client: OpenAI | None = None,
     samples: int | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> ComplianceReport:
-    """Run the full pipeline. `samples` is the self-consistency k (None = default)."""
+    """Run the full pipeline. `samples` is the self-consistency k (None = default).
+
+    `progress(done, total, label)` is called as each stage completes, so a caller
+    driving this from a UI can show what it is working on instead of a spinner.
+    """
     client = client or get_client()
     samples = auditor_agent._resolve_samples(samples)
 
@@ -44,7 +50,8 @@ def run_audit(
 
     try:
         findings, audit_errors = auditor_agent.audit(
-            snapshot, client=client, fingerprints=fingerprints, samples=samples
+            snapshot, client=client, fingerprints=fingerprints, samples=samples,
+            progress=progress,
         )
         report.findings.extend(findings)
         report.errors.extend(audit_errors)
@@ -164,13 +171,12 @@ def _render_draft_report(report: ComplianceReport) -> str:
     score = report.compliance_score
     if score["weighted_pass_rate"] is not None:
         lines += [
-            f"**Grade: {score['grade']}** — severity-weighted pass rate "
-            f"{score['weighted_pass_rate']:.1%} "
-            f"({score['weight_earned']}/{score['weight_possible']} weighted checks)",
+            f"**Weighted pass rate: {score['weighted_pass_rate']:.1%}** "
+            f"({score['weight_earned']}/{score['weight_possible']} weighted checks) — "
+            f"{score['high_failures']} high, {score['medium_failures']} medium, "
+            f"{score['low_failures']} low severity violations",
             "",
         ]
-        if score["gate"]:
-            lines += [f"> {score['gate']}.", ""]
         if score["undecided"]:
             lines += [
                 f"> {score['undecided']} verdict(s) were undecided and are excluded from the rate.",

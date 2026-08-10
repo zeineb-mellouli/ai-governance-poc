@@ -33,10 +33,6 @@ FAIL_ON_HELP = (
     "Exit 1 if any NON_COMPLIANT finding is at this severity or above "
     "(LOW|MEDIUM|HIGH). Off by default."
 )
-FAIL_ON_GRADE_HELP = (
-    "Exit 1 if the repository's grade is this or worse (PASS|NEEDS_WORK|FAIL). "
-    "Off by default."
-)
 FAIL_ON_ERROR_HELP = (
     "Exit 1 if the audit had partial failures. Without this, a run that errors on "
     "most of its files can report a flattering pass rate and a green build."
@@ -52,7 +48,7 @@ def _render_gate(result: gate.GateResult, thresholds: str) -> None:
     console.print(f"\n[bold {style}]Gate: {result.label}[/bold {style}]   [dim]{thresholds}[/dim]")
     console.print(
         f"  HIGH {result.high}  ·  MEDIUM {result.medium}  ·  LOW {result.low}  ·  "
-        f"grade {result.grade}  ·  undecided {result.undecided}  ·  errors {result.errors}"
+        f"undecided {result.undecided}  ·  errors {result.errors}"
     )
     for reason in result.reasons:
         console.print(f"\n  [red]✗[/red] {reason}")
@@ -67,12 +63,10 @@ def _render_gate(result: gate.GateResult, thresholds: str) -> None:
         console.print(f"      [dim]... and {len(result.tripped) - 10} more — see the report[/dim]")
 
 
-def _thresholds_label(fail_on, fail_on_grade, fail_on_error) -> str:
+def _thresholds_label(fail_on, fail_on_error) -> str:
     parts = []
     if fail_on:
         parts.append(f"--fail-on {fail_on.value}")
-    if fail_on_grade:
-        parts.append(f"--fail-on-grade {fail_on_grade.value}")
     if fail_on_error:
         parts.append("--fail-on-error")
     return "  ".join(parts) if parts else "no thresholds set — reporting only"
@@ -84,8 +78,6 @@ def audit(
     out: str = typer.Option("reports", "--out", help="Base directory for machine_report.json / draft_report.md"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
     fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
-    fail_on_grade: gate.GradeGate = typer.Option(None, "--fail-on-grade", case_sensitive=False,
-                                                 help=FAIL_ON_GRADE_HELP),
     fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
     open_dashboard: bool = typer.Option(False, "--open",
                                         help="Open the interactive dashboard on this repository afterwards."),
@@ -101,8 +93,8 @@ def audit(
     console.print(f"Machine report: {machine_path}")
     console.print(f"Draft report:   {draft_path}")
 
-    result = gate.evaluate(report, fail_on, fail_on_grade, fail_on_error)
-    _render_gate(result, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
+    result = gate.evaluate(report, fail_on, fail_on_error)
+    _render_gate(result, _thresholds_label(fail_on, fail_on_error))
 
     if open_dashboard:
         # Before the gate exits: a failing audit is exactly when you want to look
@@ -120,8 +112,6 @@ def batch(
     category: str = typer.Option("", "--category", help="Only run repos under this category subfolder (e.g. compliant)"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
     fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
-    fail_on_grade: gate.GradeGate = typer.Option(None, "--fail-on-grade", case_sensitive=False,
-                                                 help=FAIL_ON_GRADE_HELP),
     fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
 ) -> None:
     """Audit every repository found under --root and print a summary table.
@@ -162,13 +152,12 @@ def batch(
             machine_path, draft_path = write_reports(report, out)
             s = report.summary
             sc = report.compliance_score
-            repo_gate = gate.evaluate(report, fail_on, fail_on_grade, fail_on_error)
+            repo_gate = gate.evaluate(report, fail_on, fail_on_error)
             gate_results.append(repo_gate)
             results.append({
                 "gate": repo_gate.label,
                 "category": cat,
                 "repo": report.repo_name,
-                "grade": sc["grade"],
                 "rate": "—" if sc["weighted_pass_rate"] is None else f"{sc['weighted_pass_rate']:.1%}",
                 "total": s["total_findings"],
                 "compliant": s["by_status"].get("COMPLIANT", 0),
@@ -187,7 +176,7 @@ def batch(
                 reasons=[f"{repo_dir.name}: the audit crashed ({exc})"],
                 errors=1,
             ))
-            results.append({"gate": "FAIL", "category": cat, "repo": repo_dir.name, "grade": "—", "rate": "—",
+            results.append({"gate": "FAIL", "category": cat, "repo": repo_dir.name, "rate": "—",
                              "total": "—", "compliant": "—",
                              "non_compliant": "—", "needs_review": "—", "not_applicable": "—",
                              "human_action": "—", "errors": "CRASH"})
@@ -200,7 +189,6 @@ def batch(
     table.add_column("Category", style="dim")
     table.add_column("Repo")
     table.add_column("Gate")
-    table.add_column("Grade")
     table.add_column("Rate", justify="right")
     table.add_column("Violations", justify="right", style="red")
     table.add_column("Undecided", justify="right", style="yellow")
@@ -210,17 +198,15 @@ def batch(
     table.add_column("To action", justify="right", style="yellow")
     table.add_column("Errors", justify="right")
 
-    gating = bool(fail_on or fail_on_grade or fail_on_error)
+    gating = bool(fail_on or fail_on_error)
     for r in results:
         err_str = str(r["errors"])
-        grade_style = {"PASS": "green", "NEEDS_WORK": "yellow", "FAIL": "red"}.get(r["grade"], "dim")
         gate_cell = "[dim]—[/dim]"
         if gating or r["gate"] == "FAIL":
             gate_style = "green" if r["gate"] == "PASS" else "red"
             gate_cell = f"[{gate_style}]{r['gate']}[/{gate_style}]"
         table.add_row(
-            r["category"], r["repo"], gate_cell,
-            f"[{grade_style}]{r['grade']}[/{grade_style}]", str(r["rate"]),
+            r["category"], r["repo"], gate_cell, str(r["rate"]),
             str(r["non_compliant"]), str(r["needs_review"]), str(r["human_action"]),
             f"[red]{err_str}[/red]" if r["errors"] else err_str,
         )
@@ -234,7 +220,7 @@ def batch(
         console.print(f"[red]{failed} repo(s) crashed during audit.[/red]")
 
     combined = gate.worst(gate_results)
-    _render_gate(combined, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
+    _render_gate(combined, _thresholds_label(fail_on, fail_on_error))
     if not combined.passed:
         raise typer.Exit(combined.exit_code)
 

@@ -4,6 +4,7 @@ Compiles all governance policies from policies.yaml into rules.md --
 the build-time constitution that Copilot reads before generating any code.
 
 Usage:  python generate_rules_md.py
+
 Output: rules.md at the project root (overwritten on every run)
 """
 

@@ -1,5 +1,28 @@
 {
   "$defs": {
+    "Dissent": {
+      "description": "What the samples that lost the vote actually said.\n\nWithout this, a non-unanimous verdict can only report that disagreement\nhappened -- the minority opinion was discarded with the losing samples, so\n\"2 of 3 runs agreed\" was the entire content. Keeping the dissenting verdict\nis what makes a near-miss reviewable: a check that passed 2-1 is worth a\nhuman's time only if you can read the argument for the other side.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/FindingStatus"
+        },
+        "samples": {
+          "title": "Samples",
+          "type": "integer"
+        },
+        "evidence": {
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "samples",
+        "evidence"
+      ],
+      "title": "Dissent",
+      "type": "object"
+    },
     "Finding": {
       "properties": {
         "policy_id": {
@@ -78,6 +101,17 @@
           ],
           "default": null,
           "title": "Remediation Note"
+        },
+        "dissent": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dissent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

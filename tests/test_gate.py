@@ -72,18 +72,6 @@ def test_tripped_findings_are_worst_first():
     assert [f.severity for f in result.tripped] == ["HIGH", "MEDIUM", "LOW"]
 
 
-def test_fail_on_grade_blocks_at_or_below_the_threshold():
-    report = _report(
-        *[_finding(f"P-{i}", "LOW", FindingStatus.COMPLIANT) for i in range(300)],
-        _finding("SEC-3", "HIGH", FindingStatus.NON_COMPLIANT),
-    )
-    assert report.compliance_score["grade"] == "FAIL"
-    assert not gate.evaluate(report, fail_on_grade="FAIL").passed
-    assert not gate.evaluate(report, fail_on_grade="NEEDS_WORK").passed  # FAIL is worse
-    # A clean repo grades PASS and clears even the strictest grade threshold.
-    clean = _report(*[_finding(f"P-{i}", "HIGH", FindingStatus.COMPLIANT) for i in range(10)])
-    assert gate.evaluate(clean, fail_on_grade="NEEDS_WORK").passed
-
 
 def test_a_crashed_audit_must_not_read_as_a_pass():
     """The reason fail_on_error exists.
@@ -119,26 +107,25 @@ def test_thresholds_combine_and_report_every_reason():
         _finding("SEC-3", "HIGH", FindingStatus.NON_COMPLIANT),
         errors=["boom"],
     )
-    result = gate.evaluate(report, fail_on="HIGH", fail_on_grade="FAIL", fail_on_error=True)
+    result = gate.evaluate(report, fail_on="HIGH", fail_on_error=True)
     assert not result.passed
-    assert len(result.reasons) == 3
+    assert len(result.reasons) == 2
 
 
 def test_enum_values_are_accepted_as_well_as_strings():
     report = _report(_finding("SEC-3", "HIGH", FindingStatus.NON_COMPLIANT))
     assert not gate.evaluate(report, fail_on=gate.SeverityGate.HIGH).passed
-    assert not gate.evaluate(report, fail_on_grade=gate.GradeGate.FAIL).passed
+    assert gate.evaluate(report, fail_on=gate.SeverityGate.LOW).tripped
 
 
 def test_batch_fails_if_any_single_repo_fails():
-    passing = gate.GateResult(passed=True, grade="PASS", high=0)
-    failing = gate.GateResult(passed=False, grade="FAIL", high=2, reasons=["nope"])
+    passing = gate.GateResult(passed=True, high=0)
+    failing = gate.GateResult(passed=False, high=2, reasons=["nope"])
 
     assert gate.worst([passing, passing]).passed
     combined = gate.worst([passing, failing, passing])
     assert not combined.passed
     assert combined.high == 2
-    assert combined.grade == "FAIL"          # worst grade across the batch
     assert "1 of 3 repositories failed" in combined.reasons[-1]
 
 

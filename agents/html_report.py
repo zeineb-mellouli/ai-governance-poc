@@ -29,7 +29,6 @@ from datetime import datetime, timezone
 from agents.schemas import ComplianceReport, Finding, FindingStatus
 
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-GRADE_ORDER = {"FAIL": 0, "NEEDS_WORK": 1, "PASS": 2, "NOT_SCORED": 3}
 
 # The auditor packs the quoted line and any routing annotation into the evidence
 # string. Split them back out so each can be styled for what it is.
@@ -73,18 +72,26 @@ def _stat(value: str, label: str, tone: str = "") -> str:
     )
 
 
-def _grade_pill(grade: str) -> str:
-    return f'<span class="pill grade-{_esc(grade.lower())}">{_esc(grade.replace("_", " "))}</span>'
+def _severity_pill(high: int, medium: int, low: int) -> str:
+    """Counts by severity, in place of the pass/fail verdict that used to sit here.
+    A fact about the repository rather than an opinion about it."""
+    parts = []
+    for count, name in ((high, "high"), (medium, "medium"), (low, "low")):
+        if count:
+            parts.append(f'<span class="pill sev-{name}">{count} {name}</span>')
+    return "".join(parts) or '<span class="pill sev-none">no violations</span>'
 
 
-def _rate_bar(rate: float | None, grade: str) -> str:
+def _rate_bar(rate: float | None, high: int) -> str:
+    """The bar is tinted by whether any high-severity violation exists -- an
+    observed property, not a graded one."""
     if rate is None:
         return '<span class="muted">—</span>'
-    pct = f"{rate:.1%}"
+    tone = "has-high" if high else "no-high"
     return (
         f'<div class="rate"><div class="rate-track">'
-        f'<div class="rate-fill grade-{_esc(grade.lower())}" style="width:{rate * 100:.4f}%"></div>'
-        f'</div><span class="rate-num">{pct}</span></div>'
+        f'<div class="rate-fill {tone}" style="width:{rate * 100:.4f}%"></div>'
+        f'</div><span class="rate-num">{rate:.1%}</span></div>'
     )
 
 
@@ -158,16 +165,13 @@ def _repo_section(report: ComplianceReport, open_by_default: bool) -> str:
     out.append(
         '<summary class="repo-head">'
         f'<span class="repo-name">{_esc(report.repo_name)}</span>'
-        f"{_grade_pill(score['grade'])}"
-        f"{_rate_bar(score['weighted_pass_rate'], score['grade'])}"
+        f"{_severity_pill(score['high_failures'], score['medium_failures'], score['low_failures'])}"
+        f"{_rate_bar(score['weighted_pass_rate'], score['high_failures'])}"
         f'<span class="repo-counts">'
         f'<b>{len(violations)}</b> violations · {passed} passed · {skipped} n/a'
         "</span></summary>"
     )
     out.append('<div class="repo-body">')
-
-    if score["gate"]:
-        out.append(f'<p class="gate-reason">{_esc(score["gate"])}</p>')
 
     if violations:
         current = None
@@ -217,8 +221,8 @@ def _overview_row(report: ComplianceReport) -> str:
     return (
         "<tr>"
         f'<td class="repo-cell">{_esc(report.repo_name)}</td>'
-        f"<td>{_grade_pill(score['grade'])}</td>"
-        f"<td class=\"rate-cell\">{_rate_bar(score['weighted_pass_rate'], score['grade'])}</td>"
+        f"<td class=\"rate-cell\">{_rate_bar(score['weighted_pass_rate'], score['high_failures'])}</td>"
+        f'<td class="num {"has-viol" if score["high_failures"] else ""}">{score["high_failures"] or "—"}</td>'
         f'<td class="num {"has-viol" if violations else ""}">{violations}</td>'
         f'<td class="num muted">{counts.get("COMPLIANT", 0)}</td>'
         f'<td class="num muted">{counts.get("NOT_APPLICABLE", 0)}</td>'
@@ -231,17 +235,17 @@ def _overview_row(report: ComplianceReport) -> str:
 
 
 def render_batch_html(reports: list[ComplianceReport], title: str = "Governance audit") -> str:
+    # Worst first: most high-severity violations, then lowest pass rate.
     ordered = sorted(
         reports,
-        key=lambda r: (GRADE_ORDER.get(r.compliance_score["grade"], 9),
+        key=lambda r: (-r.compliance_score["high_failures"],
                        r.compliance_score["weighted_pass_rate"] or 0.0),
     )
 
     total_violations = sum(r.summary["by_status"].get("NON_COMPLIANT", 0) for r in reports)
     total_checks = sum(r.summary["applicable_checks"] for r in reports)
     high = sum(r.compliance_score["high_failures"] for r in reports)
-    passing = sum(1 for r in reports if r.compliance_score["grade"] == "PASS")
-    action = sum(r.summary["needs_human_attention"] for r in reports)
+    clean = sum(1 for r in reports if not r.summary["by_status"].get("NON_COMPLIANT", 0))
     samples = sorted({r.audit_samples for r in reports})
     fingerprints = sorted({fp for r in reports for fp in r.model_fingerprints})
 
@@ -249,9 +253,8 @@ def render_batch_html(reports: list[ComplianceReport], title: str = "Governance 
         _stat(str(len(reports)), "repositories"),
         _stat(str(total_violations), "violations", "tone-bad" if total_violations else "tone-good"),
         _stat(str(high), "high severity", "tone-bad" if high else "tone-good"),
-        _stat(f"{passing}/{len(reports)}", "passing", "tone-good" if passing else ""),
+        _stat(f"{clean}/{len(reports)}", "with no violations", "tone-good" if clean else ""),
         _stat(str(total_checks), "applicable checks"),
-        _stat(str(action) if action else "0", "need a person"),
     ])
 
     meta = [f"k = {', '.join(str(s) for s in samples)}"]
@@ -268,8 +271,8 @@ def render_batch_html(reports: list[ComplianceReport], title: str = "Governance 
         f'<section class="stats">{stats}</section>',
         '<section class="overview"><h2>Repositories</h2>',
         '<div class="table-scroll"><table>',
-        "<thead><tr><th>Repository</th><th>Grade</th><th>Weighted pass rate</th>"
-        '<th class="num">Violations</th><th class="num">Passed</th>'
+        "<thead><tr><th>Repository</th><th>Weighted pass rate</th>"
+        '<th class="num">High</th><th class="num">Violations</th><th class="num">Passed</th>'
         '<th class="num">N/A</th><th class="num">To action</th></tr></thead><tbody>',
         "".join(_overview_row(r) for r in ordered),
         "</tbody></table></div>",
@@ -362,22 +365,21 @@ td.has-viol{color:var(--high);font-weight:600}
 
 .pill{display:inline-block;padding:2px 9px;border-radius:2px;font-size:.68rem;
   font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-.grade-pass{background:var(--good-bg);color:var(--good)}
-.grade-needs_work{background:var(--medium-bg);color:var(--medium)}
-.grade-fail{background:var(--high-bg);color:var(--high)}
-.grade-not_scored{background:var(--low-bg);color:var(--low)}
+.pill.sev-high{background:var(--high-bg);color:var(--high)}
+.pill.sev-medium{background:var(--medium-bg);color:var(--medium)}
+.pill.sev-low{background:var(--low-bg);color:var(--low)}
+.pill.sev-none{background:var(--good-bg);color:var(--good)}
 
 .rate{display:flex;align-items:center;gap:9px;min-width:150px}
 .rate-track{flex:1;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden}
 .rate-fill{height:100%;border-radius:3px}
-.rate-fill.grade-pass{background:var(--good)}
-.rate-fill.grade-needs_work{background:var(--medium)}
-.rate-fill.grade-fail{background:var(--high)}
+.rate-fill.has-high{background:var(--high)}
+.rate-fill.no-high{background:var(--good)}
 .rate-num{font-size:.8rem;color:var(--ink-2);min-width:48px;text-align:right}
 
 .detail{display:flex;flex-direction:column;gap:10px}
 .repo{border:1px solid var(--rule);border-radius:3px;background:var(--surface);overflow:hidden}
-.repo-head{cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:14px;
+.repo-head{cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:8px;
   flex-wrap:wrap;list-style:none;background:var(--surface)}
 .repo-head::-webkit-details-marker{display:none}
 .repo-head:hover{background:var(--surface-2)}

@@ -34,6 +34,30 @@ SKIP_DIRS = {
     "dist", "build", ".terraform", "mlruns",
 }
 
+# Paths excluded by position rather than by directory name, matched against the
+# repo-relative path.
+#
+# Spec-driven-development scaffolding: the specification of what to build, and
+# the agent definitions that built it. Governance policies apply to the pipeline
+# that runs in production, not to the documents describing it -- a naming rule
+# about dataset files says nothing useful about `specs/.../tasks.md`, and a
+# spec-kit agent prompt is not a CI control however much it looks like one.
+# On the sample corpus this is 29 of code-polymer's 48 files: 60% of the repo
+# was toolchain artifacts, each costing a model call and diluting the pass rate.
+#
+# These need position, not name. "agents" and "prompts" are ordinary source
+# folder names -- this project has agents/ -- so putting them in SKIP_DIRS would
+# silently exclude real code. ".github/" itself must stay walkable because
+# .github/workflows/ is a genuine CI control that GIT-8 has to see.
+SKIP_PATH_PREFIXES = (
+    "specs/",
+    ".specify/",
+    ".github/agents/",
+    ".github/prompts/",
+    ".github/instructions/",
+    ".github/chatmodes/",
+)
+
 TEXT_EXTENSIONS: dict[str, FileType] = {
     ".py": FileType.PYTHON,
     ".sql": FileType.SQL,
@@ -170,7 +194,15 @@ def scan(repo_path: str) -> RepositorySnapshot:
     # fixed character budget in this order and drops whatever no longer fits, so
     # an unsorted walk decides which files that pass is even allowed to see.
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        rel_dir = Path(dirpath).relative_to(root).as_posix()
+        prefix = "" if rel_dir == "." else f"{rel_dir}/"
+        # Pruned here rather than filtered per file, so an excluded tree is never
+        # descended into at all.
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in SKIP_DIRS
+            and not any(f"{prefix}{d}/".startswith(skip) for skip in SKIP_PATH_PREFIXES)
+        )
         for filename in sorted(filenames):
             file_path = Path(dirpath) / filename
             rel_path = file_path.relative_to(root).as_posix()
