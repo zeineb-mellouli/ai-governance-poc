@@ -11,9 +11,27 @@ from pathlib import Path
 
 from agents.schemas import FileRecord, FileType, RepositorySnapshot
 
+# Directories holding generated output, vendored dependencies, or tool state.
+# Auditing them is money spent on artifacts nobody wrote: a .NET repo's bin/ and
+# obj/ alone can outnumber its source files, and every file here would be an LLM
+# call. The .NET and JVM entries matter because Azure DevOps shops are commonly
+# .NET, and the original list only covered Python and Node.
+#
+# The tradeoff is real: a repository that genuinely keeps source in build/ or
+# bin/ would be under-audited. That is the rarer mistake, and it is visible in
+# the report's file count, whereas an inflated bill is not.
 SKIP_DIRS = {
-    ".git", "venv", ".venv", "__pycache__", ".specify", ".claude",
-    "node_modules", ".pytest_cache", ".idea", ".vscode", "mlruns",
+    # version control and editor/tool state
+    ".git", ".idea", ".vscode", ".vs", ".specify", ".claude",
+    # Python
+    "venv", ".venv", "__pycache__", ".pytest_cache", ".mypy_cache",
+    ".ruff_cache", ".tox", "site-packages", "htmlcov", ".eggs",
+    # Node
+    "node_modules", ".next", ".nuxt", "coverage",
+    # .NET / JVM
+    "bin", "obj", "packages", "target", ".gradle",
+    # generic build output and infrastructure state
+    "dist", "build", ".terraform", "mlruns",
 }
 
 TEXT_EXTENSIONS: dict[str, FileType] = {
