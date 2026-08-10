@@ -40,7 +40,7 @@ Any dataset published to the gold/reporting layer is consumed by people and syst
 
 **Rule:**
 
-This is a whole-repository check. Enumerate every gold/reporting/curated/ datamart output path the repository writes, and every CREATE TABLE with a Dim or Fact suffix. For each, look for a grain statement in ANY file: the writing module's docstring or comments, the README, or the table's DDL. A grain statement names what one row is -- "one row per counterparty per day". A statement of what the table is FOR is a purpose, not a grain. COMPLIANT if every such output has a grain statement somewhere. NON_COMPLIANT if at least one has none anywhere -- name the output path and the files you checked. Does not apply to bronze, silver, staging, or logs, nor to exploratory notebooks.
+This is a whole-repository check. Enumerate every gold/reporting/curated/ datamart output path the repository writes, and every CREATE TABLE with a Dim or Fact suffix. For each, look for a grain statement in ANY file: the writing module's docstring or comments, the README, or the table's DDL. A grain statement names what one row IS, in the form "one row per X" (optionally per Y) -- "one row per counterparty per day". A statement of what the table is FOR is a purpose, not a grain. Neither is a table's name or a descriptive adjective: "Daily VaR breach fact table" and "the daily exposure report" say nothing about whether one row is per desk, per instrument, or per breach, so they do NOT satisfy this. Accept only an explicit statement of what a single row represents. COMPLIANT if every such output has a grain statement somewhere. NON_COMPLIANT if at least one has none anywhere -- name the output path and the files you checked. Does not apply to bronze, silver, staging, or logs, nor to exploratory notebooks.
 
 **Compliant examples:**
 
@@ -49,6 +49,7 @@ This is a whole-repository check. Enumerate every gold/reporting/curated/ datama
 **Non-compliant examples:**
 
 - `gold/MarginCallReport.csv written; no file states what one row is`
+- `-- Daily VaR breach fact table   (a name, not a grain)`
 
 ---
 
@@ -160,7 +161,7 @@ Bronze holds raw ingested data. Silver holds validated, cleansed, deduplicated d
 
 **Rule:**
 
-Treat silver, cleansed, curated, refined, staging, validated and processed as the same middle layer, whatever the folder is called, including when a README maps a folder to a layer. Violations: (1) no layer separation at all -- every write lands in one undifferentiated location, e.g. final output written back beside the raw input; (2) a layer skip -- code reads a bronze/raw path and writes straight to a gold/reporting path with no middle-layer step; (3) a write into the middle layer with no data quality validation immediately before it. A silver -> gold write is the correct flow. Never flag it here, even if it performs no validation and no aggregation: validation before a gold write is DQ-1's concern. There is no quality gate before gold in this policy. Does not apply to a file with no tiered storage paths, or to a pure schema definition file.
+Treat silver, cleansed, curated, refined, staging, validated and processed as the same middle layer, whatever the folder is called, including when a README maps a folder to a layer. Violations: (1) no layer separation at all -- every write lands in one undifferentiated location, e.g. final output written back beside the raw input; (2) a layer skip -- data read from a bronze/raw path reaches a gold/reporting write without passing through a middle layer. Judge this PER DATASET: a file that reads bronze AND silver and then writes gold is still skipping for the bronze dataset, and reading silver elsewhere in the same file does not excuse it; (3) a write into the middle layer with no data quality validation immediately before it. A silver -> gold write is the correct flow. Never flag it here, even if it performs no validation and no aggregation: validation before a gold write is DQ-1's concern. There is no quality gate before gold in this policy. Does not apply to a file with no tiered storage paths, or to a pure schema definition file.
 
 **Compliant examples:**
 
@@ -184,7 +185,7 @@ Any pipeline job or model training run should log progress and errors in a way t
 
 **Rule:**
 
-A pipeline job or training run must leave a record that outlives the session. Look for the logging module rather than print() alone, an error path that logs the exception (logger.error / logger.exception) rather than swallowing it, and -- for a training loop -- metrics written somewhere queryable (MLflow, Weights & Biases, a log file) rather than only printed.
+A pipeline job or training run must leave a record that outlives the session. Look for the logging module rather than print() alone, an error path that logs the exception (logger.error / logger.exception) rather than swallowing it, and -- for a training loop -- metrics written somewhere queryable (MLflow, Weights & Biases, a log file) rather than only printed. A file IS a pipeline job or training run if it reads or writes data (a file, a table, or a warehouse) or trains a model. A numbered stage file (01_IngestData.py) and any module inside a pipeline folder are pipeline jobs. Doing that work with no logging at all is the violation, not a reason the policy does not apply -- only a pure helper with no data I/O and no training is out of scope.
 
 **Compliant examples:**
 
@@ -207,16 +208,16 @@ A result produced by a stochastic step cannot be reproduced by anyone else unles
 
 **Rule:**
 
-Every stochastic step in this file must have its randomness fixed: a train/test split, a sample, a shuffle, a weight initialisation, or a simulation. Any of np.random.seed, random.seed, random_state=, torch.manual_seed, or a framework equivalent counts, and it must cover the call that actually uses randomness -- np.random.seed does not seed sklearn's train_test_split, which needs its own random_state. Judge only this file. If it performs no stochastic operation, this does not apply. Dependency versions are REPRO-13's concern, not yours.
+Every stochastic step in this file must have its randomness fixed: a train/test split, a sample, a shuffle, a weight initialisation, or a simulation. A seed set anywhere in the file before the stochastic call satisfies this, INCLUDING a global one. np.random.seed and random.seed fix the global generator that sklearn's train_test_split draws from when no random_state is passed, so a script that seeds globally is reproducible. Passing random_state explicitly is more robust and is preferred, but its absence is NOT a violation on its own when a global seed is set. Flag NON_COMPLIANT only when a stochastic step runs with no seed set anywhere in the file. Judge only this file. If it performs no stochastic operation, this does not apply. Dependency versions are REPRO-13's concern, not yours.
 
 **Compliant examples:**
 
 - `train_test_split(X, y, test_size=0.2, random_state=42)`
-- `np.random.seed(42); np.random.normal(size=1000)`
+- `np.random.seed(42)  # ... later ... train_test_split(X, y, test_size=0.2)`
 
 **Non-compliant examples:**
 
-- `train_test_split(X, y, test_size=0.2)  # no random_state`
+- `train_test_split(X, y, test_size=0.2)  # no random_state, and no seed anywhere in the file`
 
 ---
 
@@ -224,7 +225,7 @@ Every stochastic step in this file must have its randomness fixed: a train/test 
 
 Three-tier Git workflow: master (stable), develop (integration), user-story/{id} (feature work). Commit messages use conventional prefixes (feat:, fix:, chore:, docs:, refactor:) and each commit is atomic. Pull requests link to a user story and require at least one reviewer.
 
-**Applies to:** `azure-pipelines.yml`, `.github/workflows/*.yml`, `.github/workflows/*.yaml`, `PULL_REQUEST_TEMPLATE.md`, `**/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`
+**Applies to:** `azure-pipelines*.yml`, `azure-pipelines*.yaml`, `*pipeline*.yml`, `*pipeline*.yaml`, `ci.yml`, `ci.yaml`, `build.yml`, `build.yaml`, `.gitlab-ci.yml`, `Jenkinsfile`, `.github/workflows/*.yml`, `.github/workflows/*.yaml`, `PULL_REQUEST_TEMPLATE.md`, `**/PULL_REQUEST_TEMPLATE.md`, `CONTRIBUTING.md`
 **Decided by:** model
 
 **Rule:**

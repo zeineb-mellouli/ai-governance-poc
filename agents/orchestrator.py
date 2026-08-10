@@ -79,7 +79,9 @@ def write_reports(report: ComplianceReport, out_base_dir: str) -> tuple[Path, Pa
 
 
 def _sort_key(finding: Finding) -> tuple:
-    return (SEVERITY_ORDER.get(finding.severity, 99), -finding.risk_score)
+    # Severity first, then most-agreed-on first: a unanimous violation is more
+    # actionable than one two of three samples reached.
+    return (SEVERITY_ORDER.get(finding.severity, 99), -finding.confidence_score)
 
 
 _NO_FIX_LABEL = {
@@ -95,7 +97,7 @@ def _render_finding(finding: Finding) -> list[str]:
         f"### {finding.policy_id} · {finding.title} [{finding.severity}]",
         "",
         f"**Location:** {finding.file_path or '(repository-level)'}",
-        f"**Confidence:** {finding.confidence_score:.2f}  |  **Risk score:** {finding.risk_score}",
+        f"**Sample agreement:** {finding.confidence_score:.0%}",
         f"**Evidence:** {finding.evidence}",
     ]
     if finding.remediation:

@@ -99,10 +99,12 @@ class Finding(BaseModel):
     remediation_status: RemediationStatus = RemediationStatus.NOT_REQUIRED
     remediation_note: Optional[str] = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def risk_score(self) -> float:
-        return round(SEVERITY_WEIGHT.get(self.severity, 0) * self.confidence_score, 3)
+    # There was a per-finding `risk_score = SEVERITY_WEIGHT * confidence` here.
+    # It is gone: once confidence became a measured agreement rate it sat at 1.0
+    # for 89% of findings, so risk_score equalled the severity weight in 66 of 69
+    # violations and restated `severity` with occasional noise. Severity and
+    # confidence are both on the finding already, and ComplianceReport.
+    # compliance_score is the aggregate that actually normalises for repo size.
 
     @computed_field  # type: ignore[prop-decorator]
     @property

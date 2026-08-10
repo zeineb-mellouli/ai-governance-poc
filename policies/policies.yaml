@@ -80,6 +80,12 @@ policies:
       path that logs the exception (logger.error / logger.exception) rather than
       swallowing it, and -- for a training loop -- metrics written somewhere
       queryable (MLflow, Weights & Biases, a log file) rather than only printed.
+      A file IS a pipeline job or training run if it reads or writes data (a
+      file, a table, or a warehouse) or trains a model. A numbered stage file
+      (01_IngestData.py) and any module inside a pipeline folder are pipeline
+      jobs. Doing that work with no logging at all is the violation, not a
+      reason the policy does not apply -- only a pure helper with no data I/O
+      and no training is out of scope.
     examples:
       compliant:
         - "logging.basicConfig(filename='logs/run.log'); logger.exception('load failed')"
@@ -189,18 +195,23 @@ policies:
     rule: >
       Every stochastic step in this file must have its randomness fixed: a
       train/test split, a sample, a shuffle, a weight initialisation, or a
-      simulation. Any of np.random.seed, random.seed, random_state=,
-      torch.manual_seed, or a framework equivalent counts, and it must cover the
-      call that actually uses randomness -- np.random.seed does not seed
-      sklearn's train_test_split, which needs its own random_state.
+      simulation.
+      A seed set anywhere in the file before the stochastic call satisfies this,
+      INCLUDING a global one. np.random.seed and random.seed fix the global
+      generator that sklearn's train_test_split draws from when no random_state
+      is passed, so a script that seeds globally is reproducible. Passing
+      random_state explicitly is more robust and is preferred, but its absence
+      is NOT a violation on its own when a global seed is set.
+      Flag NON_COMPLIANT only when a stochastic step runs with no seed set
+      anywhere in the file.
       Judge only this file. If it performs no stochastic operation, this does
       not apply. Dependency versions are REPRO-13's concern, not yours.
     examples:
       compliant:
         - "train_test_split(X, y, test_size=0.2, random_state=42)"
-        - "np.random.seed(42); np.random.normal(size=1000)"
+        - "np.random.seed(42)  # ... later ... train_test_split(X, y, test_size=0.2)"
       non_compliant:
-        - "train_test_split(X, y, test_size=0.2)  # no random_state"
+        - "train_test_split(X, y, test_size=0.2)  # no random_state, and no seed anywhere in the file"
 
   - policy_id: DM-7
     title: Shared output table grain documentation
@@ -219,8 +230,13 @@ policies:
       datamart output path the repository writes, and every CREATE TABLE with a
       Dim or Fact suffix. For each, look for a grain statement in ANY file: the
       writing module's docstring or comments, the README, or the table's DDL.
-      A grain statement names what one row is -- "one row per counterparty per
-      day". A statement of what the table is FOR is a purpose, not a grain.
+      A grain statement names what one row IS, in the form "one row per X"
+      (optionally per Y) -- "one row per counterparty per day".
+      A statement of what the table is FOR is a purpose, not a grain. Neither is
+      a table's name or a descriptive adjective: "Daily VaR breach fact table"
+      and "the daily exposure report" say nothing about whether one row is per
+      desk, per instrument, or per breach, so they do NOT satisfy this. Accept
+      only an explicit statement of what a single row represents.
       COMPLIANT if every such output has a grain statement somewhere.
       NON_COMPLIANT if at least one has none anywhere -- name the output path
       and the files you checked. Does not apply to bronze, silver, staging, or
@@ -230,6 +246,7 @@ policies:
         - "-- Grain: one row per product per market date"
       non_compliant:
         - "gold/MarginCallReport.csv written; no file states what one row is"
+        - "-- Daily VaR breach fact table   (a name, not a grain)"
 
   - policy_id: GIT-8
     title: Git branching and commit standards
@@ -244,8 +261,21 @@ policies:
     # Gated to actual governance control files. Agent instruction files, spec
     # documents and READMEs mention branch names in prose; they do not enforce
     # anything, and evaluating them produced findings against documentation.
+    # Matched case-insensitively. The earlier list required the file to be named
+    # exactly azure-pipelines.yml, so FinalProject's pipeline.yml -- a genuine
+    # Azure Pipelines definition with a trigger/branches block -- was never
+    # offered this policy at all. Real repositories name CI files freely.
     applies_to:
-      - "azure-pipelines.yml"
+      - "azure-pipelines*.yml"
+      - "azure-pipelines*.yaml"
+      - "*pipeline*.yml"
+      - "*pipeline*.yaml"
+      - "ci.yml"
+      - "ci.yaml"
+      - "build.yml"
+      - "build.yaml"
+      - ".gitlab-ci.yml"
+      - "Jenkinsfile"
       - ".github/workflows/*.yml"
       - ".github/workflows/*.yaml"
       - "PULL_REQUEST_TEMPLATE.md"
@@ -362,8 +392,11 @@ policies:
       Violations:
       (1) no layer separation at all -- every write lands in one undifferentiated
       location, e.g. final output written back beside the raw input;
-      (2) a layer skip -- code reads a bronze/raw path and writes straight to a
-      gold/reporting path with no middle-layer step;
+      (2) a layer skip -- data read from a bronze/raw path reaches a
+      gold/reporting write without passing through a middle layer. Judge this
+      PER DATASET: a file that reads bronze AND silver and then writes gold is
+      still skipping for the bronze dataset, and reading silver elsewhere in the
+      same file does not excuse it;
       (3) a write into the middle layer with no data quality validation
       immediately before it.
       A silver -> gold write is the correct flow. Never flag it here, even if it

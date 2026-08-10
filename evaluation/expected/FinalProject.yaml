@@ -20,7 +20,6 @@ expect_violations:
   - {policy: REPRO-14, file: final_v2_ACTUAL.py, note: writes df back over bronze/EthanolMarketRate_20240701.csv, the file it read}
   - {policy: REPRO-6, file: final_v2_ACTUAL.py, note: train_test_split with no random_state}
   - {policy: OPS-2, file: final_v2_ACTUAL.py, note: print() only, no logging module}
-  - {policy: PII-4, file: final_v2_ACTUAL.py, note: print(customers) exposes name/email/phone}
   - {policy: NAM-5, file: final_v2_ACTUAL.py, note: vague tokens final/v2/ACTUAL and non-CamelCase stem}
 
   # Untitled.ipynb
@@ -61,3 +60,9 @@ tolerate:
   # entry. Whether the SQL DDL defining PII columns is itself an exposure is
   # a separate question the policy does not answer.
   - {policy: PII-4, file: sql/create_tables.sql, note: DDL declares name/email/phone columns but holds no values}
+  # `print(customers)` does expose name/email/phone -- but only if you already
+  # know what columns customers.csv has, and the per-file pass is shown one file
+  # at a time. Demanding this verdict here asks a single-file check to answer a
+  # cross-file question. The exposure is still caught: data/customers.csv is
+  # flagged on its own header, in expect_violations above.
+  - {policy: PII-4, file: final_v2_ACTUAL.py, note: print(customers) exposes PII only in light of another file's header}

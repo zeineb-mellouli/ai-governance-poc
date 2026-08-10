@@ -40,7 +40,7 @@ import shlex
 import tomllib
 from collections import Counter
 from datetime import datetime
-from fnmatch import fnmatch
+from fnmatch import fnmatch, fnmatchcase
 from pathlib import Path
 
 import chromadb
@@ -248,10 +248,19 @@ def _load_policies() -> dict[str, dict]:
 
 
 def _path_matches(rel_path: str, pattern: str) -> bool:
-    """fnmatch against the full path and the bare filename, tolerating a **/ prefix."""
-    name = Path(rel_path).name
+    """fnmatch against the full path and the bare filename, tolerating a **/ prefix.
+
+    Case-insensitive on purpose. fnmatch follows the platform's case rules, so
+    `*pipeline*.yml` would match Treasury_Pipeline/x.yml on Windows and not on
+    macOS -- the same repository would be audited differently depending on who
+    ran it. Naming conventions are the thing being judged here; they should not
+    also decide what gets judged.
+    """
+    lowered = rel_path.lower()
+    name = Path(lowered).name
+    pattern = pattern.lower()
     candidates = [pattern, pattern[3:]] if pattern.startswith("**/") else [pattern]
-    return any(fnmatch(rel_path, p) or fnmatch(name, p) for p in candidates)
+    return any(fnmatchcase(lowered, p) or fnmatchcase(name, p) for p in candidates)
 
 
 def _policy_covers_path(policy: dict, rel_path: str) -> bool:
