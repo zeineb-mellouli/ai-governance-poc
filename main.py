@@ -10,6 +10,7 @@ from rich.table import Table
 
 load_dotenv()
 
+from agents import gate  # noqa: E402
 from agents.auditor_agent import _resolve_samples as resolve_samples  # noqa: E402
 from agents.orchestrator import run_audit, write_reports  # noqa: E402 - must load .env before importing agents
 
@@ -22,6 +23,53 @@ SAMPLES_HELP = (
     "verdict is the majority; confidence is the fraction that agreed. k=1 is cheapest "
     "but measures no disagreement, so every confidence is 1.0. Default: 3."
 )
+FAIL_ON_HELP = (
+    "Exit 1 if any NON_COMPLIANT finding is at this severity or above "
+    "(LOW|MEDIUM|HIGH). Off by default."
+)
+FAIL_ON_GRADE_HELP = (
+    "Exit 1 if the repository's grade is this or worse (PASS|NEEDS_WORK|FAIL). "
+    "Off by default."
+)
+FAIL_ON_ERROR_HELP = (
+    "Exit 1 if the audit had partial failures. Without this, a run that errors on "
+    "most of its files can report a flattering pass rate and a green build."
+)
+
+SEVERITY_DOT = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "dim"}
+
+
+def _render_gate(result: gate.GateResult, thresholds: str) -> None:
+    """Print the gate decision. Counts show whether it passed or failed, so a
+    green build still reports what was actually evaluated."""
+    style = "green" if result.passed else "red"
+    console.print(f"\n[bold {style}]Gate: {result.label}[/bold {style}]   [dim]{thresholds}[/dim]")
+    console.print(
+        f"  HIGH {result.high}  ·  MEDIUM {result.medium}  ·  LOW {result.low}  ·  "
+        f"grade {result.grade}  ·  undecided {result.undecided}  ·  errors {result.errors}"
+    )
+    for reason in result.reasons:
+        console.print(f"\n  [red]✗[/red] {reason}")
+    for finding in result.tripped[:10]:
+        colour = SEVERITY_DOT.get(finding.severity, "dim")
+        location = finding.file_path or "(repository-level)"
+        console.print(
+            f"      [{colour}]{finding.policy_id:<9}[/{colour}] [{finding.severity}]  "
+            f"{location}  [dim]{finding.evidence[:70]}[/dim]"
+        )
+    if len(result.tripped) > 10:
+        console.print(f"      [dim]... and {len(result.tripped) - 10} more — see the report[/dim]")
+
+
+def _thresholds_label(fail_on, fail_on_grade, fail_on_error) -> str:
+    parts = []
+    if fail_on:
+        parts.append(f"--fail-on {fail_on.value}")
+    if fail_on_grade:
+        parts.append(f"--fail-on-grade {fail_on_grade.value}")
+    if fail_on_error:
+        parts.append("--fail-on-error")
+    return "  ".join(parts) if parts else "no thresholds set — reporting only"
 
 
 @app.command()
@@ -29,6 +77,10 @@ def audit(
     repo: str = typer.Option(..., "--repo", help="Path to the local repository to audit"),
     out: str = typer.Option("reports", "--out", help="Base directory for machine_report.json / draft_report.md"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
+    fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
+    fail_on_grade: gate.GradeGate = typer.Option(None, "--fail-on-grade", case_sensitive=False,
+                                                 help=FAIL_ON_GRADE_HELP),
+    fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
 ) -> None:
     """Run Repository -> Auditor -> Remediation against a local repo and write a compliance report."""
     report = run_audit(repo, samples=samples)
@@ -41,6 +93,11 @@ def audit(
     console.print(f"Machine report: {machine_path}")
     console.print(f"Draft report:   {draft_path}")
 
+    result = gate.evaluate(report, fail_on, fail_on_grade, fail_on_error)
+    _render_gate(result, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
+    if not result.passed:
+        raise typer.Exit(result.exit_code)
+
 
 @app.command()
 def batch(
@@ -48,6 +105,10 @@ def batch(
     out: str = typer.Option("reports", "--out", help="Base directory for all reports"),
     category: str = typer.Option("", "--category", help="Only run repos under this category subfolder (e.g. compliant)"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
+    fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
+    fail_on_grade: gate.GradeGate = typer.Option(None, "--fail-on-grade", case_sensitive=False,
+                                                 help=FAIL_ON_GRADE_HELP),
+    fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
 ) -> None:
     """Audit every repository found under --root and print a summary table.
 
@@ -78,6 +139,7 @@ def batch(
     console.print(f"\n[bold]Batch audit — {len(repo_paths)} repos, k={effective_k}[/bold]\n")
 
     results = []
+    gate_results: list[gate.GateResult] = []
     failed = 0
     for cat, repo_dir in repo_paths:
         console.print(f"  Auditing [cyan]{cat}/{repo_dir.name}[/cyan] ...")
@@ -86,7 +148,10 @@ def batch(
             machine_path, draft_path = write_reports(report, out)
             s = report.summary
             sc = report.compliance_score
+            repo_gate = gate.evaluate(report, fail_on, fail_on_grade, fail_on_error)
+            gate_results.append(repo_gate)
             results.append({
+                "gate": repo_gate.label,
                 "category": cat,
                 "repo": report.repo_name,
                 "grade": sc["grade"],
@@ -101,37 +166,48 @@ def batch(
             })
         except Exception as exc:  # noqa: BLE001
             console.print(f"    [red]FAILED: {exc}[/red]")
-            results.append({"category": cat, "repo": repo_dir.name, "grade": "—", "rate": "—",
+            # A repo that crashed produced no verdict. It must never read as a
+            # pass, whatever the thresholds are -- there is nothing to pass.
+            gate_results.append(gate.GateResult(
+                passed=False,
+                reasons=[f"{repo_dir.name}: the audit crashed ({exc})"],
+                errors=1,
+            ))
+            results.append({"gate": "FAIL", "category": cat, "repo": repo_dir.name, "grade": "—", "rate": "—",
                              "total": "—", "compliant": "—",
                              "non_compliant": "—", "needs_review": "—", "not_applicable": "—",
                              "human_action": "—", "errors": "CRASH"})
             failed += 1
 
-    # Summary table
+    # Summary table. Deliberately narrow: total / compliant / not-applicable
+    # counts are all in machine_report.json and none of them change a decision,
+    # while twelve columns squeezed every value down to four characters.
     table = Table(title="\nBatch Audit Summary", show_lines=True)
     table.add_column("Category", style="dim")
     table.add_column("Repo")
+    table.add_column("Gate")
     table.add_column("Grade")
     table.add_column("Rate", justify="right")
-    table.add_column("Total", justify="right")
-    table.add_column("✅ Compliant", justify="right", style="green")
-    table.add_column("❌ Non-Compliant", justify="right", style="red")
-    table.add_column("👁 Undecided", justify="right", style="yellow")
-    table.add_column("— N/A", justify="right", style="dim")
+    table.add_column("Violations", justify="right", style="red")
+    table.add_column("Undecided", justify="right", style="yellow")
     # Non-compliant findings with no usable auto-fix, plus undecided verdicts.
-    # This is the queue a person actually has to work through -- distinct from
+    # The queue a person actually has to work through -- distinct from
     # "Undecided", which is only the verdicts the audit could not settle.
-    table.add_column("🙋 Human Action", justify="right", style="yellow")
+    table.add_column("To action", justify="right", style="yellow")
     table.add_column("Errors", justify="right")
 
+    gating = bool(fail_on or fail_on_grade or fail_on_error)
     for r in results:
         err_str = str(r["errors"])
         grade_style = {"PASS": "green", "NEEDS_WORK": "yellow", "FAIL": "red"}.get(r["grade"], "dim")
+        gate_cell = "[dim]—[/dim]"
+        if gating or r["gate"] == "FAIL":
+            gate_style = "green" if r["gate"] == "PASS" else "red"
+            gate_cell = f"[{gate_style}]{r['gate']}[/{gate_style}]"
         table.add_row(
-            r["category"], r["repo"],
+            r["category"], r["repo"], gate_cell,
             f"[{grade_style}]{r['grade']}[/{grade_style}]", str(r["rate"]),
-            str(r["total"]), str(r["compliant"]), str(r["non_compliant"]),
-            str(r["needs_review"]), str(r["not_applicable"]), str(r["human_action"]),
+            str(r["non_compliant"]), str(r["needs_review"]), str(r["human_action"]),
             f"[red]{err_str}[/red]" if r["errors"] else err_str,
         )
 
@@ -139,7 +215,11 @@ def batch(
     console.print(f"\nReports written to: [bold]{Path(out).resolve()}[/bold]")
     if failed:
         console.print(f"[red]{failed} repo(s) crashed during audit.[/red]")
-        raise typer.Exit(1)
+
+    combined = gate.worst(gate_results)
+    _render_gate(combined, _thresholds_label(fail_on, fail_on_grade, fail_on_error))
+    if not combined.passed:
+        raise typer.Exit(combined.exit_code)
 
 
 def _fmt(value: float | None) -> str:
