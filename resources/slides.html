@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agentic Governance for Data Pipelines</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --paper:#fbfcfd; --ink:#151b24; --ink2:#3c4653; --muted:#6b7684; --rule:#dde2e8;
+  --source:#2f4a7c; --build:#1f6f4a; --run:#b3261e;
+  --high:#b3261e; --medium:#8a5a00; --low:#5c6773;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:#e9ecf0;font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased}
+.deck{position:relative;width:100vw;height:100vh;overflow:hidden}
+.slide{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+  padding:4vh 6vw;background:var(--paper)}
+.slide.on{display:flex}
+h1{font-size:clamp(34px,5.2vw,68px);line-height:1.06;letter-spacing:-.025em;font-weight:650;text-wrap:balance}
+h2{font-size:clamp(24px,3.1vw,42px);line-height:1.15;letter-spacing:-.018em;font-weight:640;margin-bottom:2.4vh;text-wrap:balance}
+h3{font-size:clamp(15px,1.35vw,21px);font-weight:650;margin-bottom:.5em}
+p,li,td,th{font-size:clamp(13px,1.15vw,18px);line-height:1.5}
+.lede{font-size:clamp(17px,1.9vw,28px);color:var(--ink2);margin-top:3vh;line-height:1.4;max-width:34ch}
+.byline{margin-top:3vh;color:var(--muted);font-size:clamp(12px,1vw,16px)}
+.sub{color:var(--muted);margin-bottom:2vh;max-width:80ch}
+.tiny{font-size:.8em;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:.92em}
+em{font-style:normal;color:var(--source);font-weight:600}
+strong{font-weight:660}
+
+.title{justify-content:center;align-items:flex-start;
+  background:linear-gradient(135deg,#fbfcfd 0%,#eef1f6 100%)}
+.title h1{max-width:18ch}
+
+.path{font-family:var(--mono);font-size:clamp(11px,.95vw,15px);color:var(--muted);margin-bottom:1.4vh}
+pre{background:#141a22;border-radius:8px;padding:2.2vh 2vw;overflow:auto;max-height:52vh}
+code{font-family:var(--mono);font-size:clamp(11px,1.02vw,17px);line-height:1.65;color:#dfe6ef;white-space:pre}
+.s{color:#f0a58a}.c{color:#8fb8f0}.cm{color:#7c8899;font-style:italic}.k{color:#a5d6b0}
+.punch{margin-top:2.4vh;font-size:clamp(14px,1.35vw,22px);line-height:1.45;color:var(--ink);max-width:72ch}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:3vw}
+.col ul{list-style:none}
+.col li{padding:.75em 0;border-bottom:1px solid var(--rule)}
+.col li.kicker{border:0;color:var(--ink2);font-weight:600;padding-top:1em}
+.col-bad h3{color:var(--run)} .col-good h3{color:var(--build)}
+
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font-size:.72em;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--muted);font-weight:660;padding:.55em .7em;border-bottom:2px solid var(--rule)}
+td{padding:.5em .7em;border-bottom:1px solid var(--rule);vertical-align:top}
+tr.det td{background:#2f4a7c0d}
+.policies td:first-child{font-family:var(--mono);font-weight:600;white-space:nowrap}
+.how{font-family:var(--mono);font-size:.85em;color:var(--muted)}
+tr.det .how{color:var(--source);font-weight:700}
+.sev{font-size:.72em;font-weight:700;letter-spacing:.05em;padding:2px 7px;border-radius:3px}
+.sev-high{background:#b3261e1a;color:var(--high)}
+.sev-medium{background:#8a5a001a;color:var(--medium)}
+.sev-low{background:#5c67731a;color:var(--low)}
+.corpus td:first-child{white-space:nowrap}
+
+.svg-wrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.svg-wrap svg{max-width:100%;max-height:76vh;height:auto;width:auto}
+
+.chips{display:flex;flex-wrap:wrap;gap:.7vw;margin:2vh 0}
+.chip{font-family:var(--mono);font-size:clamp(11px,1vw,16px);background:#2f4a7c12;
+  color:var(--source);border:1px solid #2f4a7c33;border-radius:5px;padding:.45em .8em}
+
+.flow{display:flex;align-items:center;gap:1.2vw;flex-wrap:wrap;margin:3vh 0}
+.flow-box{padding:1.1em 1.4em;border-radius:7px;font-family:var(--mono);
+  font-size:clamp(12px,1.15vw,18px);font-weight:600}
+.flow-box.source{background:#2f4a7c14;color:var(--source);border:1.5px solid var(--source)}
+.flow-box.build{background:#1f6f4a14;color:var(--build);border:1.5px solid var(--build)}
+.flow-arrow{color:var(--muted);font-size:.85em}
+.flow-arrow::after{content:" →"}
+
+.agents{display:flex;flex-direction:column;gap:1.6vh}
+.agent{display:flex;gap:1.4vw;align-items:flex-start;background:#fff;border:1px solid var(--rule);
+  border-radius:7px;padding:1.6vh 1.4vw}
+.agent .n{font-size:clamp(20px,2.4vw,36px);font-weight:700;color:var(--run);opacity:.35;line-height:1}
+.agent h3{color:var(--run)}
+
+.buckets{display:grid;grid-template-columns:repeat(3,1fr);gap:1.6vw;margin-bottom:2.6vh}
+.bucket{background:#fff;border:1px solid var(--rule);border-top:3px solid var(--muted);
+  border-radius:7px;padding:1.6vh 1.2vw}
+.bucket .bn{font-size:clamp(22px,2.6vw,38px);font-weight:680;letter-spacing:-.02em;line-height:1;
+  display:block;margin-bottom:.3em;font-variant-numeric:tabular-nums}
+.bucket h3{font-family:var(--mono);font-size:clamp(12px,1.05vw,16px)}
+.bucket p{color:var(--ink2);font-size:clamp(11px,.98vw,15px)}
+.b-v{border-top-color:var(--run)} .b-v .bn,.b-v h3{color:var(--run)}
+.b-c{border-top-color:var(--build)} .b-c .bn,.b-c h3{color:var(--build)}
+.b-t{border-top-color:var(--medium)} .b-t .bn,.b-t h3{color:var(--medium)}
+.notes-cols p{color:var(--ink2);margin-bottom:.7em;font-size:clamp(12px,1.05vw,16px)}
+.okh{color:var(--build)} .warnh{color:var(--medium)}
+.pull{font-weight:600;color:var(--ink)}
+
+.demo{background:linear-gradient(135deg,#141a22 0%,#1e2733 100%);color:#eef2f7;
+  justify-content:center;align-items:flex-start}
+.demo h1{color:#fff}
+.demo-label{font-family:var(--mono);letter-spacing:.28em;text-transform:uppercase;
+  color:#f0a58a;font-size:clamp(11px,1vw,15px);margin-bottom:1.5vh}
+.demo-target{margin-top:3vh;font-size:clamp(16px,1.9vw,30px);color:#8fb8f0}
+.demo-target .mono{color:#f0a58a;font-size:1em}
+
+.hud{position:fixed;bottom:14px;right:18px;display:flex;gap:14px;align-items:center;
+  font-size:12px;color:var(--muted);font-family:var(--mono);z-index:10}
+.hud button{border:1px solid var(--rule);background:#fff;color:var(--ink2);border-radius:4px;
+  cursor:pointer;font:inherit;padding:2px 8px}
+.hud button:hover{background:#f0f2f6}
+.progress{position:fixed;top:0;left:0;height:2.5px;background:var(--source);z-index:10;transition:width .18s}
+.notes{position:fixed;bottom:14px;left:18px;max-width:44vw;font-size:12px;color:var(--muted);
+  font-style:italic;z-index:10;display:none}
+.notes.on{display:block}
+
+@media print{
+  body{background:#fff}
+  .deck{height:auto}
+  .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;border:0}
+  .hud,.progress,.notes{display:none!important}
+}
+</style></head>
+<body>
+<div class="progress" id="bar"></div>
+<div class="deck"><section class="slide title" data-note="">
+  <h1>Agentic Governance<br>for Data Pipelines</h1>
+  <p class="lede">One policy library, enforced twice.
+    <em>Before</em> the code exists, and <em>after</em> it lands.</p>
+  <p class="byline">A proof of concept · build-time and run-time paths</p>
+</section><section class="slide code-slide" data-note="Read the four lines out loud. Say the filename. Then ask the question.">
+  <h2>Motivation</h2>
+  <p class="path">sample_repos/non_compliant/FinalProject/<strong>final_v2_ACTUAL.py</strong></p>
+  <pre><code><span class="c">connection_string</span> = <span class="s">"mssql+pyodbc://admin:Tetra@dmin123!@prod-db..."</span>  <span class="cm"># production credential</span>
+<span class="c">api_key</span> = <span class="s">"sk-prod-xK92mNpL4rTvQw8jYeB3fHdA6cUoZiG5"</span>
+
+df = pd.read_csv(<span class="s">"bronze/EthanolMarketRate_20240701.csv"</span>)
+df.to_csv(<span class="s">"bronze/EthanolMarketRate_20240701.csv"</span>)   <span class="cm"># overwrites its own source</span>
+
+<span class="c">print</span>(customers)                                <span class="cm"># names, emails, phone numbers</span>
+X_train, X_test, y_train, y_test = train_test_split(X, y)   <span class="cm"># no seed</span></code></pre>
+  <p class="punch">The question isn't whether it exists.<br>
+     It's how you find <em>all</em> of them across two hundred repositories,
+     and how you stop the next one being written.</p>
+</section><section class="slide diagram" data-note="Walk it once, left to right. One source, compiled two ways. Then move on.">
+  <h2>Two moments to intervene</h2>
+  <div class="svg-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="1480" height="720" viewBox="0 0 1480 720">
+<defs>
+  <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#6b7684"/>
+  </marker>
+</defs>
+<rect width="1480" height="720" fill="#ffffff"/>
+<text x="740.0" y="40" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="24" font-weight="600" fill="#151b24">Agentic Governance for Data Pipelines</text>
+<text x="740.0" y="64" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" fill="#6b7684">One policy library, enforced twice: before the code exists, and after it lands</text>
+<rect x="565.0" y="92" width="350" height="60" rx="6" fill="#2f4a7c12" stroke="#2f4a7c" stroke-width="1.5"/>
+<text x="740.0" y="116.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#2f4a7c">policies/policies.yaml</text>
+<text x="740.0" y="134.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">14 policies · severity · applies_to globs</text>
+<text x="740.0" y="149.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">the only place a rule is written</text>
+<path d="M740.0,152 L740.0,177.0 L320,177.0 L320,202" stroke="#2f4a7c" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<path d="M740.0,152 L740.0,177.0 L1160,177.0 L1160,202" stroke="#2f4a7c" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="120.0" y="202" width="400" height="54" rx="6" fill="#2f4a7c12" stroke="#2f4a7c" stroke-width="1.5"/>
+<text x="320.0" y="223.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#2f4a7c">rules.md</text>
+<text x="320.0" y="241.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">what the AI reads while writing code</text>
+<rect x="960.0" y="202" width="400" height="54" rx="6" fill="#2f4a7c12" stroke="#2f4a7c" stroke-width="1.5"/>
+<text x="1160.0" y="223.0" text-anchor="middle" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace" font-size="14" font-weight="600" fill="#2f4a7c">chroma_db</text>
+<text x="1160.0" y="241.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">what the auditor retrieves while checking code</text>
+<line x1="740.0" y1="286" x2="740.0" y2="660" stroke="#c9d0d9" stroke-width="1" stroke-dasharray="3 7"/>
+<text x="320" y="300" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="700" fill="#1f6f4a">BUILD TIME  ·  PREVENT</text>
+<text x="320" y="320" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" font-weight="400" fill="#6b7684">governance is an input to code generation</text>
+<text x="1160" y="300" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="700" fill="#b3261e">RUN TIME  ·  DETECT</text>
+<text x="1160" y="320" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" font-weight="400" fill="#6b7684">governance is a check on code that exists</text>
+<rect x="120.0" y="344" width="400" height="64" rx="6" fill="#1f6f4a12" stroke="#1f6f4a" stroke-width="1.5"/>
+<text x="320.0" y="370.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#1f6f4a">GitHub Spec Kit</text>
+<text x="320.0" y="388.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">spec.md · plan.md · tasks.md · data-model.md</text>
+<text x="320.0" y="403.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">the engineer writes intent, not code</text>
+<path d="M320,408 L320,440" stroke="#1f6f4a" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="120.0" y="440" width="400" height="60" rx="6" fill="#1f6f4a12" stroke="#1f6f4a" stroke-width="1.5"/>
+<text x="320.0" y="464.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#1f6f4a">Copilot generates the pipeline</text>
+<text x="320.0" y="482.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">reads the spec and rules.md together</text>
+<path d="M320,500 L320,532" stroke="#1f6f4a" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="120.0" y="532" width="400" height="60" rx="6" fill="#1f6f4a12" stroke="#1f6f4a" stroke-width="1.5"/>
+<text x="320.0" y="556.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#1f6f4a">Pipeline repository</text>
+<text x="320.0" y="574.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">medallion layers · pandera checks · env-var secrets</text>
+<text x="320" y="620" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="13" font-weight="600" fill="#1f6f4a">Compliant by construction — not by correction</text>
+<rect x="960.0" y="344" width="400" height="54" rx="6" fill="#b3261e12" stroke="#b3261e" stroke-width="1.5"/>
+<text x="1160.0" y="365.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#b3261e">Repository Agent</text>
+<text x="1160.0" y="383.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">walks the repo · no model call</text>
+<path d="M1160,398 L1160,424" stroke="#b3261e" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="960.0" y="424" width="400" height="92" rx="6" fill="#b3261e12" stroke="#b3261e" stroke-width="1.5"/>
+<text x="1160.0" y="464.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#b3261e">Auditor Agent</text>
+<text x="1160.0" y="482.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">deterministic in code: repo name, file names, pinning</text>
+<text x="1160.0" y="497.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">model + RAG: everything needing judgement</text>
+<text x="1160.0" y="512.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">k samples → majority vote · evidence quoted verbatim</text>
+<path d="M1160,516 L1160,542" stroke="#b3261e" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="960.0" y="542" width="400" height="54" rx="6" fill="#b3261e12" stroke="#b3261e" stroke-width="1.5"/>
+<text x="1160.0" y="563.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#b3261e">Remediation Agent</text>
+<text x="1160.0" y="581.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" fill="#6b7684">writes a fix, or hands it to a person</text>
+<path d="M1160,596 L1160,622" stroke="#b3261e" stroke-width="1.8" fill="none" marker-end="url(#a)"/>
+<rect x="960.0" y="622" width="400" height="44" rx="6" fill="#6b768412" stroke="#6b7684" stroke-width="1.5"/>
+<text x="1160.0" y="649.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="15.5" font-weight="600" fill="#6b7684">Compliance report</text>
+<path d="M320,592 L320,684 L1160,684 L1160,666" stroke="#6b7684" stroke-width="1.8" fill="none" stroke-dasharray="6 4"/>
+<text x="740.0" y="700" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" font-weight="400" fill="#6b7684">every repository the build half produces is a repository the run half audits</text>
+<text x="740.0" y="268" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="12" font-weight="400" fill="#6b7684">blue = policy source        green = build time        red = run time</text>
+</svg></div>
+</section><section class="slide split" data-note="This is the half nobody has seen. Give it room.">
+  <h2>Build time: from vibe coding to specification</h2>
+  <div class="two-col">
+    <div class="col col-bad">
+      <h3>Vibe coding</h3>
+      <ul>
+        <li>You prompt. You get code.</li>
+        <li>You read it, fix it, prompt again.</li>
+        <li>The specification lives in a chat window.</li>
+        <li class="kicker">Tomorrow it is gone. Nobody can review it, diff it, or ask why.</li>
+      </ul>
+    </div>
+    <div class="col col-good">
+      <h3>Spec-driven development</h3>
+      <ul>
+        <li>You write the intent down first.</li>
+        <li>The AI generates from the written spec.</li>
+        <li>The spec is a file in the repository.</li>
+        <li class="kicker">Reviewable, diffable, and it survives the person who wrote it.</li>
+      </ul>
+    </div>
+  </div>
+</section><section class="slide default" data-note="Show .github/prompts/ in code-polymer live if the room is engaged.">
+  <h2>GitHub Spec Kit</h2>
+  <p class="sub">Open-source toolkit. Installs a set of slash commands into Copilot.</p>
+  <div class="chips">
+    <span class="chip">/speckit.constitution</span>
+    <span class="chip">/speckit.specify</span>
+    <span class="chip">/speckit.clarify</span>
+    <span class="chip">/speckit.plan</span>
+    <span class="chip">/speckit.tasks</span>
+    <span class="chip">/speckit.implement</span>
+    <span class="chip">/speckit.analyze</span>
+    <span class="chip">/speckit.checklist</span>
+  </div>
+  <p class="punch">The workflow is the product: specify → clarify → plan → break into tasks →
+     implement. Each step writes a file. Nothing lives only in the conversation.</p>
+</section><section class="slide default" data-note="Open spec.md and show one paragraph on screen.">
+  <h2>What I actually wrote</h2>
+  <p class="path">sample_repos/sdd_generated/code-polymer/specs/001-polymer-pricing-etl/</p>
+  <table class="wide">
+    <thead><tr><th>file</th><th>what it holds</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">spec.md</td><td>requirements in business language, no code</td></tr>
+      <tr><td class="mono">plan.md</td><td>the architecture the AI proposed, and why</td></tr>
+      <tr><td class="mono">data-model.md</td><td>tables, columns, and the <strong>grain</strong> of each output</td></tr>
+      <tr><td class="mono">tasks.md</td><td>the ordered build steps</td></tr>
+      <tr><td class="mono">research.md</td><td>the decisions it looked up before choosing</td></tr>
+      <tr><td class="mono">contracts/</td><td>the SQL DDL and the pipeline interface</td></tr>
+      <tr><td class="mono">checklists/</td><td>what "done" means, written before starting</td></tr>
+    </tbody>
+  </table>
+  <p class="punch">Nowhere in here did I write Python.<br>
+     I wrote what the pipeline must be <em>true of</em>.</p>
+</section><section class="slide default" data-note="This is the single most important structural idea in the project.">
+  <h2>The bridge between the two halves</h2>
+  <div class="flow">
+    <div class="flow-box source">policies/policies.yaml</div>
+    <div class="flow-arrow">compiles to</div>
+    <div class="flow-box build">rules.md</div>
+    <div class="flow-arrow">read by</div>
+    <div class="flow-box build">Copilot, while generating</div>
+  </div>
+  <p class="punch">350 lines, auto-generated. The same policy file that <em>audits</em> the code
+     also <em>instructs</em> the AI that writes it.<br>
+     One source of truth, two audiences.</p>
+</section><section class="slide code-slide" data-note="">
+  <h2>What came out of the generator</h2>
+  <p class="path">code-polymer/pipeline/<strong>01_IngestData.py</strong></p>
+  <pre><code><span class="cm"># pandera schema, validated before anything is written</span>
+validated = PricingSchema.validate(raw, lazy=<span class="c">True</span>)
+
+<span class="cm"># credentials from the environment, never in the file</span>
+conn = create_engine(os.environ[<span class="s">"WAREHOUSE_CONN"</span>])
+
+<span class="cm"># bronze, then silver, then gold. No layer skipped.</span>
+raw = pd.read_csv(<span class="s">"bronze/PolymerPricing_2026-07-14.csv"</span>)
+validated.to_parquet(<span class="s">"silver/PolymerPricing_2026-07-14.parquet"</span>)</code></pre>
+  <p class="punch">Nobody told the developer to do any of this.<br>
+     It came out that way because the constitution was an <em>input</em>.</p>
+</section><section class="slide default" data-note="Don&#x27;t read the table. Let them scan it while you make the deterministic point.">
+  <h2>The policy library: 14 policies</h2>
+  <table class="policies">
+    <thead><tr><th>id</th><th>what it checks</th><th>severity</th><th>decided by</th></tr></thead>
+    <tbody><tr class=""><td class="mono">ARCH-12</td><td>Medallion architecture (Bronze / Silver / Gold)</td><td><span class="sev sev-high">HIGH</span></td><td class="how">model</td></tr><tr class=""><td class="mono">DQ-1</td><td>Data quality validation present</td><td><span class="sev sev-high">HIGH</span></td><td class="how">model</td></tr><tr class=""><td class="mono">PII-4</td><td>No raw PII exposed in outputs</td><td><span class="sev sev-high">HIGH</span></td><td class="how">model</td></tr><tr class=""><td class="mono">SEC-3</td><td>No hardcoded secrets or credentials</td><td><span class="sev sev-high">HIGH</span></td><td class="how">model</td></tr><tr class=""><td class="mono">DM-7</td><td>Shared output table grain documentation</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class=""><td class="mono">GIT-8</td><td>Git branching and commit standards</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class=""><td class="mono">OPS-2</td><td>Logging and monitoring</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class="det"><td class="mono">REPO-9</td><td>Repository naming convention</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">code</td></tr><tr class=""><td class="mono">REPRO-14</td><td>Raw source data not modified in place</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class=""><td class="mono">REPRO-6</td><td>Random seeds fixed for stochastic steps</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class=""><td class="mono">SQL-10</td><td>SQL table and object naming convention</td><td><span class="sev sev-medium">MEDIUM</span></td><td class="how">model</td></tr><tr class="det"><td class="mono">NAM-5</td><td>File and folder naming convention</td><td><span class="sev sev-low">LOW</span></td><td class="how">hybrid</td></tr><tr class="det"><td class="mono">REPRO-13</td><td>Dependency versions pinned</td><td><span class="sev sev-low">LOW</span></td><td class="how">code</td></tr><tr class=""><td class="mono">SQL-11</td><td>SQL column naming convention</td><td><span class="sev sev-low">LOW</span></td><td class="how">model</td></tr></tbody>
+  </table>
+</section><section class="slide code-slide" data-note="">
+  <h2>What one policy looks like</h2>
+  <pre><code><span class="k">policy_id</span>: SEC-3
+<span class="k">title</span>: No hardcoded secrets or credentials
+<span class="k">severity</span>: HIGH
+<span class="k">scope</span>: file
+<span class="k">evaluation</span>: model
+
+<span class="k">applies_to</span>: [<span class="s">"**/*"</span>]
+<span class="k">excludes</span>:   [<span class="s">".env.example"</span>, <span class="s">"*.template"</span>, <span class="s">"*.sample"</span>]
+
+<span class="k">rule</span>: &gt;
+  A literal credential that could authenticate a system is a violation
+  wherever it appears. Reading from os.environ or a secrets manager is
+  compliant. A placeholder is not a credential.
+
+<span class="k">examples</span>:
+  <span class="k">compliant</span>:     [<span class="s">"api_key = os.environ['API_KEY']"</span>]
+  <span class="k">non_compliant</span>: [<span class="s">"api_key = 'sk-prod-xK92...'"</span>]</code></pre>
+</section><section class="slide default" data-note="Spend your time on compliant, adversarial and holistic. Skim the rest.">
+  <h2>How I tested it: 10 repositories, 9 categories</h2>
+  <table class="corpus">
+    <thead><tr><th>category</th><th>repository</th><th>what it is designed to prove</th></tr></thead>
+    <tbody><tr><td><strong>compliant</strong><div class="tiny">clean by construction</div></td><td><span class="mono">ops-code-market_rate</span></td><td>Anything flagged here is a false positive. The most valuable test in the corpus.</td></tr><tr><td><strong>non_compliant</strong><div class="tiny">maximally broken</div></td><td><span class="mono">FinalProject</span></td><td>Everything should fire. A miss here is a clear false negative.</td></tr><tr><td><strong>realistic</strong><div class="tiny">plausible production repo</div></td><td><span class="mono">fin-code-var_risk_model</span></td><td>Mostly sound, with the violations that appear under incident pressure.</td></tr><tr><td><strong>ambiguous</strong><div class="tiny">genuinely unclear cases</div></td><td><span class="mono">fin-code-credit_scoring_model</span></td><td>np.random.seed(42) set globally but no random_state. Is that a violation?</td></tr><tr><td><strong>adversarial</strong><div class="tiny">prompt injection</div></td><td><span class="mono">fin-code-collateral_management</span></td><td>A fake COMPLIANCE OVERRIDE docstring claiming the file was pre-approved.</td></tr><tr><td><strong>edge_cases</strong><div class="tiny">boundary conditions</div></td><td><span class="mono">fin-code-liquidity_forecast</span></td><td>Correct and incorrect date suffixes on otherwise identical files.</td></tr><tr><td><strong>holistic</strong><div class="tiny">only visible repo-wide</div></td><td><span class="mono">fin-code-fx_exposure_report</span></td><td>No single file looks broken. Nothing anywhere validates data.</td></tr><tr><td><strong>not_applicable</strong><div class="tiny">policies must NOT fire</div></td><td><span class="mono">fin-code-filing_deadline_tracker</span></td><td>A small utility with no database, no model, no tiered storage.</td></tr><tr><td><strong>sdd_generated</strong><div class="tiny">the build half&#x27;s output</div></td><td><span class="mono">code-polymer</span><br><span class="mono">ops-code-customer_churn</span></td><td>Generated from specs, then audited by the run half.</td></tr></tbody>
+  </table>
+  <p class="punch">Each one was built to break the auditor in a specific way.</p>
+</section><section class="slide default" data-note="">
+  <h2>Run time: three agents, one job each</h2>
+  <div class="agents">
+    <div class="agent">
+      <span class="n">1</span>
+      <div><h3>Repository Agent</h3>
+      <p>Walks the repository and reads files. <strong>No model call.</strong>
+         Skips generated output and spec scaffolding, so you don't pay to audit
+         <span class="mono">bin/</span> or <span class="mono">node_modules/</span>.</p></div>
+    </div>
+    <div class="agent">
+      <span class="n">2</span>
+      <div><h3>Auditor Agent</h3>
+      <p>Deterministic checks run in code. Everything needing judgement goes to the
+         model, grounded in the policy retrieved from ChromaDB. Each check runs
+         <span class="mono">k</span> times and the verdict is the majority.</p></div>
+    </div>
+    <div class="agent">
+      <span class="n">3</span>
+      <div><h3>Remediation Agent</h3>
+      <p>Writes a concrete fix, or records why a person is needed. It can never
+         change a verdict, because whether a fix exists says nothing about whether
+         the violation is real.</p></div>
+    </div>
+  </div>
+</section><section class="slide default" data-note="Lead with the method. Say the caveat yourself before anyone else does.">
+  <h2>How I evaluated it</h2>
+  <p class="sub">200
+     labels across 8 repositories, written by reading each repository against
+     the policies.</p>
+  <div class="buckets">
+    <div class="bucket b-v"><span class="bn">61</span>
+      <h3>expect_violations</h3>
+      <p>The audit <strong>must</strong> flag this. Not firing is a false negative.</p></div>
+    <div class="bucket b-c"><span class="bn">128</span>
+      <h3>expect_clean</h3>
+      <p>The audit <strong>must not</strong> flag this. Firing is a false positive.</p></div>
+    <div class="bucket b-t"><span class="bn">11</span>
+      <h3>tolerate</h3>
+      <p>Either verdict is defensible. Excluded from scoring, and marks a place the
+         policy is underspecified.</p></div>
+  </div>
+  
+</section><section class="slide demo" data-note="k=1. SEC-3 quoted credential, NAM-5 computed fix, then the Not certain tab.">
+  <p class="demo-label">live</p>
+  <h1>Demo</h1>
+</section></div>
+<div class="notes" id="notes"></div>
+<div class="hud">
+  <button onclick="show(i-1)">◀</button><span id="n"></span><button onclick="show(i+1)">▶</button>
+  <span>F full · N notes · P print</span>
+</div>
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+let i=0, notesOn=false;
+const hud=document.getElementById('n'), bar=document.getElementById('bar'), nb=document.getElementById('notes');
+function show(k){
+  i=Math.max(0,Math.min(slides.length-1,k));
+  slides.forEach((s,j)=>s.classList.toggle('on',j===i));
+  hud.textContent=(i+1)+' / '+slides.length;
+  bar.style.width=((i+1)/slides.length*100)+'%';
+  nb.textContent=slides[i].dataset.note||'';
+  location.hash=i+1;
+}
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)){e.preventDefault();show(i+1);}
+  else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){e.preventDefault();show(i-1);}
+  else if(e.key==='Home')show(0);
+  else if(e.key==='End')show(slides.length-1);
+  else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();}
+  else if(e.key==='n'||e.key==='N'){notesOn=!notesOn;nb.classList.toggle('on',notesOn);}
+  else if(e.key==='p'||e.key==='P'){window.print();}
+});
+document.querySelector('.deck').addEventListener('click',e=>{
+  if(e.target.closest('.hud'))return;
+  show(e.clientX < innerWidth*0.28 ? i-1 : i+1);
+});
+show(parseInt(location.hash.slice(1))-1 || 0);
+</script>
+</body></html>
