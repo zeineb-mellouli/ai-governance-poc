@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Governance audit</title>
+<style>
+:root{
+  --paper:#f5f6f8; --surface:#ffffff; --surface-2:#eef1f5;
+  --ink:#151b24; --ink-2:#3c4653; --muted:#6b7684; --rule:#dfe3e9;
+  --accent:#2f4a7c;
+  --high:#b3261e; --medium:#8a5a00; --low:#4a5568; --good:#1f6f4a;
+  --high-bg:#fdeceb; --medium-bg:#fbf3e2; --low-bg:#eef0f3; --good-bg:#e7f3ec;
+  --code-bg:#f0f2f6;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#10141a; --surface:#171d26; --surface-2:#1e2530;
+    --ink:#e6eaf0; --ink-2:#c2cad5; --muted:#8d99a8; --rule:#28313d;
+    --accent:#8fb0e8;
+    --high:#f2887f; --medium:#e0b262; --low:#9aa7b6; --good:#68c295;
+    --high-bg:#2a1614; --medium-bg:#2a2113; --low-bg:#1e2530; --good-bg:#12261d;
+    --code-bg:#0d1116;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10141a; --surface:#171d26; --surface-2:#1e2530;
+  --ink:#e6eaf0; --ink-2:#c2cad5; --muted:#8d99a8; --rule:#28313d;
+  --accent:#8fb0e8;
+  --high:#f2887f; --medium:#e0b262; --low:#9aa7b6; --good:#68c295;
+  --high-bg:#2a1614; --medium-bg:#2a2113; --low-bg:#1e2530; --good-bg:#12261d;
+  --code-bg:#0d1116;
+}
+:root[data-theme="light"]{
+  --paper:#f5f6f8; --surface:#ffffff; --surface-2:#eef1f5;
+  --ink:#151b24; --ink-2:#3c4653; --muted:#6b7684; --rule:#dfe3e9;
+  --accent:#2f4a7c;
+  --high:#b3261e; --medium:#8a5a00; --low:#4a5568; --good:#1f6f4a;
+  --high-bg:#fdeceb; --medium-bg:#fbf3e2; --low-bg:#eef0f3; --good-bg:#e7f3ec;
+  --code-bg:#f0f2f6;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 24px 96px;
+  display:flex;flex-direction:column;gap:38px}
+h1,h2,h3,h4{margin:0;text-wrap:balance;font-weight:600}
+h1{font-size:1.75rem;letter-spacing:-.015em}
+h2{font-size:.75rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+  padding-bottom:10px;border-bottom:1px solid var(--rule)}
+.muted{color:var(--muted)}
+.num,.rate-num,td.num{font-variant-numeric:tabular-nums}
+
+.masthead{display:flex;flex-direction:column;gap:6px}
+.meta{margin:0;font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;
+  background:var(--rule);border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.stat{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:3px}
+.stat-value{font-size:1.7rem;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.tone-bad .stat-value{color:var(--high)}
+.tone-good .stat-value{color:var(--good)}
+
+.overview{display:flex;flex-direction:column;gap:14px}
+.table-scroll{overflow-x:auto;border:1px solid var(--rule);border-radius:3px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.875rem}
+th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--rule);
+  white-space:nowrap;background:var(--surface-2)}
+td{padding:11px 14px;border-bottom:1px solid var(--rule);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+th.num,td.num{text-align:right}
+.repo-cell{font-family:var(--mono);font-size:.82rem}
+td.has-viol{color:var(--high);font-weight:600}
+.footnote{margin:0;font-size:.78rem;color:var(--muted);max-width:68ch}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:2px;font-size:.68rem;
+  font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.pill.sev-high{background:var(--high-bg);color:var(--high)}
+.pill.sev-medium{background:var(--medium-bg);color:var(--medium)}
+.pill.sev-low{background:var(--low-bg);color:var(--low)}
+.pill.sev-none{background:var(--good-bg);color:var(--good)}
+
+.rate{display:flex;align-items:center;gap:9px;min-width:150px}
+.rate-track{flex:1;height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.rate-fill{height:100%;border-radius:3px}
+.rate-fill.has-high{background:var(--high)}
+.rate-fill.no-high{background:var(--good)}
+.rate-num{font-size:.8rem;color:var(--ink-2);min-width:48px;text-align:right}
+
+.detail{display:flex;flex-direction:column;gap:10px}
+.repo{border:1px solid var(--rule);border-radius:3px;background:var(--surface);overflow:hidden}
+.repo-head{cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:8px;
+  flex-wrap:wrap;list-style:none;background:var(--surface)}
+.repo-head::-webkit-details-marker{display:none}
+.repo-head:hover{background:var(--surface-2)}
+.repo[open] .repo-head{border-bottom:1px solid var(--rule)}
+.repo-name{font-family:var(--mono);font-size:.85rem;font-weight:600;flex:1;min-width:210px}
+.repo-counts{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.repo-body{padding:18px 16px 22px;display:flex;flex-direction:column;gap:20px}
+.gate-reason{margin:0;font-size:.83rem;color:var(--high);
+  background:var(--high-bg);padding:9px 12px;border-radius:3px}
+.clean{margin:0;color:var(--good);font-size:.9rem}
+
+.sev-group{display:flex;flex-direction:column;gap:10px}
+.sev-head{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em}
+.sev-head.sev-high{color:var(--high)}
+.sev-head.sev-medium{color:var(--medium)}
+.sev-head.sev-low{color:var(--low)}
+
+.finding{border:1px solid var(--rule);border-left:3px solid var(--low);
+  border-radius:3px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;
+  background:var(--surface)}
+.finding.sev-high{border-left-color:var(--high)}
+.finding.sev-medium{border-left-color:var(--medium)}
+.finding-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.chip{font-size:.6rem;font-weight:700;letter-spacing:.09em;padding:2px 6px;border-radius:2px}
+.sev-high .sev-chip{background:var(--high-bg);color:var(--high)}
+.sev-medium .sev-chip{background:var(--medium-bg);color:var(--medium)}
+.sev-low .sev-chip{background:var(--low-bg);color:var(--low)}
+.policy{font-family:var(--mono);font-size:.8rem;font-weight:600}
+.policy-title{font-size:.82rem;color:var(--ink-2)}
+.loc{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-left:auto}
+.verdict{margin:0;font-size:.88rem;color:var(--ink-2);max-width:74ch}
+
+.evidence,.fix{display:flex;flex-direction:column;gap:5px}
+.evidence-label,.fix-label{font-size:.6rem;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--muted);font-weight:600}
+.fix-computed .fix-label{color:var(--good)}
+.fix-desc{margin:0;font-size:.82rem;color:var(--ink-2);max-width:74ch}
+pre{margin:0;background:var(--code-bg);border:1px solid var(--rule);border-radius:3px;
+  padding:10px 12px;overflow-x:auto}
+code{font-family:var(--mono);font-size:.78rem;line-height:1.5;white-space:pre-wrap;
+  word-break:break-word}
+.evidence pre{border-left:2px solid var(--accent)}
+.agreement{margin:0;font-size:.74rem;color:var(--medium);font-family:var(--mono)}
+
+.unsure-block{display:flex;flex-direction:column;gap:10px;padding-top:16px;
+  border-top:1px dashed var(--rule)}
+.unsure-head{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--medium)}
+.unsure-intro{margin:0;font-size:.8rem;color:var(--muted);max-width:74ch}
+.errors{font-size:.8rem;color:var(--high)}
+.errors ul{margin:6px 0 0;padding-left:18px}
+
+summary:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:640px){
+  .wrap{padding:24px 14px 64px}
+  .loc{margin-left:0;width:100%}
+  .rate{min-width:120px}
+}
+</style>
+</head>
+<body><div class="wrap"><header class="masthead"><h1>Governance audit</h1><p class="meta">k = 1 · 2026-08-11 12:47 UTC</p></header><section class="stats"><div class="stat"><span class="stat-value">11</span><span class="stat-label">repositories</span></div><div class="stat tone-bad"><span class="stat-value">134</span><span class="stat-label">violations</span></div><div class="stat tone-bad"><span class="stat-value">35</span><span class="stat-label">high severity</span></div><div class="stat tone-good"><span class="stat-value">1/11</span><span class="stat-label">with no violations</span></div><div class="stat"><span class="stat-value">641</span><span class="stat-label">applicable checks</span></div></section><section class="overview"><h2>Repositories</h2><div class="table-scroll"><table><thead><tr><th>Repository</th><th>Weighted pass rate</th><th class="num">High</th><th class="num">Violations</th><th class="num">Passed</th><th class="num">N/A</th><th class="num">To action</th></tr></thead><tbody><tr><td class="repo-cell">risk-code-ai-assistant</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:71.8100%"></div></div><span class="rate-num">71.8%</span></div></td><td class="num has-viol">8</td><td class="num has-viol">39</td><td class="num muted">64</td><td class="num muted">135</td><td class="num">—</td></tr><tr><td class="repo-cell">FinalProject</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:42.1100%"></div></div><span class="rate-num">42.1%</span></div></td><td class="num has-viol">6</td><td class="num has-viol">25</td><td class="num muted">12</td><td class="num muted">20</td><td class="num">2</td></tr><tr><td class="repo-cell">ops-code-customer_churn</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:86.2600%"></div></div><span class="rate-num">86.3%</span></div></td><td class="num has-viol">6</td><td class="num has-viol">16</td><td class="num muted">77</td><td class="num muted">69</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-var_risk_model</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:74.8000%"></div></div><span class="rate-num">74.8%</span></div></td><td class="num has-viol">5</td><td class="num has-viol">17</td><td class="num muted">43</td><td class="num muted">20</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-fx_exposure_report</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:87.3600%"></div></div><span class="rate-num">87.4%</span></div></td><td class="num has-viol">3</td><td class="num has-viol">5</td><td class="num muted">36</td><td class="num muted">17</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-liquidity_forecast</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:88.4900%"></div></div><span class="rate-num">88.5%</span></div></td><td class="num has-viol">3</td><td class="num has-viol">10</td><td class="num muted">57</td><td class="num muted">23</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-collateral_management</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:85.9000%"></div></div><span class="rate-num">85.9%</span></div></td><td class="num has-viol">2</td><td class="num has-viol">6</td><td class="num muted">32</td><td class="num muted">20</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-credit_scoring_model</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:90.5900%"></div></div><span class="rate-num">90.6%</span></div></td><td class="num has-viol">1</td><td class="num has-viol">5</td><td class="num muted">36</td><td class="num muted">17</td><td class="num">—</td></tr><tr><td class="repo-cell">code-polymer</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:91.1400%"></div></div><span class="rate-num">91.1%</span></div></td><td class="num has-viol">1</td><td class="num has-viol">9</td><td class="num muted">65</td><td class="num muted">51</td><td class="num">—</td></tr><tr><td class="repo-cell">fin-code-filing_deadline_tracker</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill no-high" style="width:95.7400%"></div></div><span class="rate-num">95.7%</span></div></td><td class="num ">—</td><td class="num has-viol">2</td><td class="num muted">21</td><td class="num muted">15</td><td class="num">—</td></tr><tr><td class="repo-cell">ops-code-market_rate</td><td class="rate-cell"><div class="rate"><div class="rate-track"><div class="rate-fill no-high" style="width:100.0000%"></div></div><span class="rate-num">100.0%</span></div></td><td class="num ">—</td><td class="num ">0</td><td class="num muted">64</td><td class="num muted">22</td><td class="num">—</td></tr></tbody></table></div><p class="footnote">Not-applicable checks are excluded from the pass rate — a check correctly skipped is not a check passed. Undecided verdicts are excluded from both sides and shown per repository below.</p></section><section class="detail"><h2>Findings</h2><details class="repo" open><summary class="repo-head"><span class="repo-name">risk-code-ai-assistant</span><span class="pill sev-high">8 high</span><span class="pill sev-medium">9 medium</span><span class="pill sev-low">22 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:71.8100%"></div></div><span class="rate-num">71.8%</span></div><span class="repo-counts"><b>39</b> violations · 64 passed · 135 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 8</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">app/refresh.py</code></header><p class="verdict">The file performs downstream data processing without any explicit quality check in this file before further use.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>results = run_ingestion(config_path)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation step immediately after ingestion and before downstream processing in app/refresh.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;app/refresh.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def run_refresh(config_path: str = &quot;config.yaml&quot;) -&gt; dict[str, int]:
+    results = run_ingestion(config_path)
+    run_normalization(config_path)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def run_refresh(config_path: str = &quot;config.yaml&quot;) -&gt; dict[str, int]:
+    results = run_ingestion(config_path)
+    if not results:
+        raise ValueError(&quot;Data quality validation failed: ingestion returned no results&quot;)
+    run_normalization(config_path)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected snippet not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">ingestion/loader.py</code></header><p class="verdict">The file loads data/configuration and performs downstream transformations without any explicit quality validation shown in the visible content.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>def load_config(config_path: str = &quot;config.yaml&quot;) -&gt; dict:
+    resolved = _ROOT / config_path if not Path(config_path).is_absolute() else Path(config_path)
+    return yaml.safe_load(resolved.read_text())</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data-quality validation step to loader.py before returning loaded config/data, using a minimal non-destructive check on required content.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;ingestion/loader.py&#x27;)
+text = p.read_text()
+needle = &#x27;def load_config(config_path: str = &quot;config.yaml&quot;) -&gt; dict:\n    resolved = _ROOT / config_path if not Path(config_path).is_absolute() else Path(config_path)\n    return yaml.safe_load(resolved.read_text())\n&#x27;
+replacement = &#x27;&#x27;&#x27;def load_config(config_path: str = &quot;config.yaml&quot;) -&gt; dict:
+    resolved = _ROOT / config_path if not Path(config_path).is_absolute() else Path(config_path)
+    config = yaml.safe_load(resolved.read_text())
+    if not isinstance(config, dict) or not config:
+        raise ValueError(f&quot;Invalid or empty config: {resolved}&quot;)
+    return config
+&#x27;&#x27;&#x27;
+if needle not in text:
+    raise SystemExit(&#x27;target snippet not found&#x27;)
+p.write_text(text.replace(needle, replacement, 1))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">ingestion/normalizer.py</code></header><p class="verdict">The file loads table data and writes it back without any explicit quality check in between.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>df = pd.read_sql(f&quot;SELECT * FROM {table_name}&quot;, con)  # noqa: S608</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data-quality validation step before writing normalized table data back to SQLite.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;ingestion/normalizer.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def normalize_table(table_name: str, db_path: str, normalizations: list[dict]) -&gt; None:
+    &quot;&quot;&quot;Read a SQLite table, apply all normalization rules, write back.&quot;&quot;&quot;
+    con = sqlite3.connect(db_path)
+    try:
+        try:
+            df = pd.read_sql(f&quot;SELECT * FROM {table_name}&quot;, con)  # noqa: S608
+        except Exception:
+            logger.warning(&quot;Table &#x27;%s&#x27; not found, skipping normalization&quot;, table_name)
+            return
+
+        for norm in normalizations:
+            df = _apply_normalization(df, norm)
+
+        df.to_sql(table_name, con, if_exists=&quot;replace&quot;, index=False)
+        logger.info(&quot;Normalized table &#x27;%s&#x27;&quot;, table_name)
+    finally:
+        con.close()
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def normalize_table(table_name: str, db_path: str, normalizations: list[dict]) -&gt; None:
+    &quot;&quot;&quot;Read a SQLite table, apply all normalization rules, validate, write back.&quot;&quot;&quot;
+    con = sqlite3.connect(db_path)
+    try:
+        try:
+            df = pd.read_sql(f&quot;SELECT * FROM {table_name}&quot;, con)  # noqa: S608
+        except Exception:
+            logger.warning(&quot;Table &#x27;%s&#x27; not found, skipping normalization&quot;, table_name)
+            return
+
+        for norm in normalizations:
+            df = _apply_normalization(df, norm)
+
+        # Explicit quality check: ensure the normalized frame is not empty before persisting.
+        if df.empty:
+            raise ValueError(f&quot;Data quality validation failed for table &#x27;{table_name}&#x27;: empty result set&quot;)
+
+        df.to_sql(table_name, con, if_exists=&quot;replace&quot;, index=False)
+        logger.info(&quot;Normalized table &#x27;%s&#x27;&quot;, table_name)
+    finally:
+        con.close()
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">ingestion/pdf_loader.py</code></header><p class="verdict">The file performs data ingestion and downstream indexing without any visible data quality validation step first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>def _extract_pages(pdf_path: Path) -&gt; list[dict]:</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a lightweight data-quality validation step before page extraction and indexing in ingestion/pdf_loader.py</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;ingestion/pdf_loader.py&#x27;)
+text = path.read_text()
+needle = &#x27;&#x27;&#x27;def _extract_pages(pdf_path: Path) -&gt; list[dict]:
+    &quot;&quot;&quot;Return a list of {page_number, text, tables} dicts for every page in the PDF.&quot;&quot;&quot;
+    try:
+        import pdfplumber
+    except ImportError:
+        raise ImportError(&quot;pdfplumber is required: pip install pdfplumber&quot;)
+
+    pages = []
+&#x27;&#x27;&#x27;
+replacement = &#x27;&#x27;&#x27;def _validate_pdf_for_ingestion(pdf_path: Path) -&gt; None:
+    &quot;&quot;&quot;Basic data-quality checks before ingestion.&quot;&quot;&quot;
+    if not pdf_path.exists():
+        raise FileNotFoundError(f&quot;PDF not found: {pdf_path}&quot;)
+    if pdf_path.suffix.lower() != &quot;.pdf&quot;:
+        raise ValueError(f&quot;Expected a .pdf file: {pdf_path}&quot;)
+    if pdf_path.stat().st_size == 0:
+        raise ValueError(f&quot;PDF is empty: {pdf_path}&quot;)
+
+
+def _extract_pages(pdf_path: Path) -&gt; list[dict]:
+    &quot;&quot;&quot;Return a list of {page_number, text, tables} dicts for every page in the PDF.&quot;&quot;&quot;
+    _validate_pdf_for_ingestion(pdf_path)
+    try:
+        import pdfplumber
+    except ImportError:
+        raise ImportError(&quot;pdfplumber is required: pip install pdfplumber&quot;)
+
+    pages = []
+&#x27;&#x27;&#x27;
+if needle not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(needle, replacement))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">scripts/audit_powerbi_export.py</code></header><p class="verdict">The script profiles and compares data but shows no explicit quality check before using it further.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>Analysis covers:
+  1. Schema     — columns in the original not in the export, and vice-versa
+  2. Content    — null breakdowns per category group, value distributions
+  3. Representation gaps — how the original formats fields vs the export</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data-quality validation gate before further analysis in scripts/audit_powerbi_export.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/audit_powerbi_export.py&#x27;)
+text = path.read_text()
+needle = &quot;&quot;&quot;def _detect_group_col(df: pd.DataFrame) -&gt; str | None:
+    candidates = [
+        \&quot;source\&quot;, \&quot;risk_category\&quot;, \&quot;category\&quot;, \&quot;category_1\&quot;,
+        \&quot;taxonomy_root\&quot;, \&quot;type\&quot;, \&quot;organisation\&quot;, \&quot;business_unit\&quot;,
+    ]
+    for c in candidates:
+        if c in df.columns:
+            return c
+    for c in df.columns:
+        if df[c].dtype == object and 2 &lt;= df[c].nunique() &lt;= 50:
+            return c
+    return None
+
+&quot;&quot;&quot;
+insert = needle + &quot;&quot;&quot;def _validate_quality(df: pd.DataFrame, label: str) -&gt; None:
+    required = [c for c in _EXPORT_METRIC_COLS if c in df.columns]
+    if not required:
+        raise ValueError(f\&quot;{label}: no expected metric columns found for quality validation\&quot;)
+    missing = [c for c in required if df[c].isna().all()]
+    if missing:
+        raise ValueError(f\&quot;{label}: quality validation failed; all values missing in: {&#x27;, &#x27;.join(missing)}\&quot;)
+
+&quot;&quot;&quot;
+if needle not in text:
+    raise SystemExit(&#x27;anchor not found&#x27;)
+text = text.replace(needle, insert, 1)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">scripts/build_all_risks.py</code></header><p class="verdict">The file loads data and uses it further without any visible quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>dl = pd.read_sql(&quot;SELECT * FROM dl_risks&quot;, con)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a lightweight data-quality validation check immediately after loading dl_risks before the data is used further.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/build_all_risks.py&#x27;)
+text = path.read_text()
+old = &#x27;    dl = pd.read_sql(&quot;SELECT * FROM dl_risks&quot;, con)\n    tax = pd.read_sql(\n&#x27;
+new = &#x27;    dl = pd.read_sql(&quot;SELECT * FROM dl_risks&quot;, con)\n    if dl.empty:\n        raise ValueError(&quot;dl_risks failed validation: no rows loaded&quot;)\n    tax = pd.read_sql(\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target snippet not found&#x27;)
+path.write_text(text.replace(old, new, 1))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">scripts/export_for_powerbi.py</code></header><p class="verdict">The file loads data and exports it onward without any intervening quality check, so it violates the validation requirement.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>return pd.read_sql(&quot;SELECT * FROM all_risks&quot;, con)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a lightweight data-quality validation step before exporting the all_risks table to Power BI.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/export_for_powerbi.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def build_all_risks(con: sqlite3.Connection) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Primary sheet — unified DeLaval + Tetra Pak risks.
+    All score, label, and intensity sort columns are produced by build_all_risks.py.
+    &quot;&quot;&quot;
+    return pd.read_sql(&quot;SELECT * FROM all_risks&quot;, con)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def build_all_risks(con: sqlite3.Connection) -&gt; pd.DataFrame:
+    &quot;&quot;&quot;
+    Primary sheet — unified DeLaval + Tetra Pak risks.
+    All score, label, and intensity sort columns are produced by build_all_risks.py.
+    &quot;&quot;&quot;
+    df = pd.read_sql(&quot;SELECT * FROM all_risks&quot;, con)
+    if df.empty:
+        raise ValueError(&quot;all_risks is empty; run ingest.py/build_all_risks.py before exporting&quot;)
+    return df
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">scripts/index_docs.py</code></header><p class="verdict">The script loads and processes data without any visible quality check before indexing it.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>n = build_pdf_index()</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a visible data-quality validation step before indexing PDFs in scripts/index_docs.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/index_docs.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;    print(f&quot;Found {pdf_count} PDF file(s) in {pdf_dir}&quot;)
+    print(&quot;Building index...&quot;)
+
+    n = build_pdf_index()
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;    print(f&quot;Found {pdf_count} PDF file(s) in {pdf_dir}&quot;)
+    print(&quot;Validating PDF inputs...&quot;)
+    for pdf in pdf_dir.glob(&quot;*.pdf&quot;):
+        if pdf.stat().st_size == 0:
+            print(f&quot;Invalid PDF input (empty file): {pdf}&quot;)
+            sys.exit(1)
+    print(&quot;Building index...&quot;)
+
+    n = build_pdf_index()
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 9</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">data/test.py</code></header><p class="verdict">The script performs work with only print-based output and no durable logging or metrics, violating the monitoring requirement.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&quot;AZURE KEY FOUND:&quot;, bool(os.getenv(&quot;AZURE_OPENAI_API_KEY&quot;)))</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace print-based status output with durable Python logging in data/test.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;data/test.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import os\nfrom openai import AzureOpenAI\nfrom dotenv import load_dotenv\nload_dotenv()  # Load environment variables from .env file\nprint(&quot;AZURE KEY FOUND:&quot;, bool(os.getenv(&quot;AZURE_OPENAI_API_KEY&quot;)))\n&#x27;, &#x27;import os\nimport logging\nfrom openai import AzureOpenAI\nfrom dotenv import load_dotenv\n\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(__name__)\n\nload_dotenv()  # Load environment variables from .env file\nlogger.info(&quot;AZURE KEY FOUND: %s&quot;, bool(os.getenv(&quot;AZURE_OPENAI_API_KEY&quot;)))\n&#x27;)
+text = text.replace(&#x27;print(&quot;✅ Embeddings connected&quot;)\nprint(&quot;Vector length:&quot;, len(embedding))\nprint(&quot;First 3 values:&quot;, embedding[:3])\n&#x27;, &#x27;logger.info(&quot;Embeddings connected&quot;)\nlogger.info(&quot;Vector length: %s&quot;, len(embedding))\nlogger.info(&quot;First 3 values: %s&quot;, embedding[:3])\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">ingestion/schema_profiler.py</code></header><p class="verdict">The file performs data I/O but contains no logging or durable monitoring record, so it violates the logging/monitoring policy.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>return &quot;No database found. Run ingestion first.&quot;</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a durable monitoring record by logging the missing-database condition before returning the existing message.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;ingestion/schema_profiler.py&#x27;)
+text = path.read_text()
+old = &#x27;import re\nimport sqlite3\nfrom datetime import datetime\n&#x27;
+new = &#x27;import logging\nimport re\nimport sqlite3\nfrom datetime import datetime\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;import block not found&#x27;)
+text = text.replace(old, new, 1)
+old = &#x27;    if not Path(db_path).exists():\n        return &quot;No database found. Run ingestion first.&quot;\n&#x27;
+new = &#x27;    if not Path(db_path).exists():\n        logging.warning(&quot;No database found. Run ingestion first.&quot;)\n        return &quot;No database found. Run ingestion first.&quot;\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;missing-db block not found&#x27;)
+text = text.replace(old, new, 1)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/audit_excel.py</code></header><p class="verdict">The script relies on print statements and does not use persistent logging or exception logging, so it fails the monitoring requirement.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&quot;Profiling Excel sheets...&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace print-based status and exception output in scripts/audit_excel.py with persistent logging to a file plus exception logging.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/audit_excel.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import sys\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport pandas as pd\nimport yaml\n&#x27;, &#x27;import logging\nimport sys\nfrom datetime import datetime\nfrom pathlib import Path\n\nimport pandas as pd\nimport yaml\n&#x27;)
+text = text.replace(&#x27;from agent.llm import get_llm\n\n_ROOT = Path(__file__).parent.parent\n&#x27;, &#x27;from agent.llm import get_llm\n\n_ROOT = Path(__file__).parent.parent\n_LOG_PATH = _ROOT / &quot;logs&quot; / &quot;audit_excel.log&quot;\n_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)\nlogging.basicConfig(\n    filename=_LOG_PATH,\n    level=logging.INFO,\n    format=&quot;%(asctime)s %(levelname)s %(message)s&quot;,\n)\nlogger = logging.getLogger(__name__)\n&#x27;)
+text = text.replace(&#x27;    print(&quot;Profiling Excel sheets...&quot;)\n&#x27;, &#x27;    logger.info(&quot;Profiling Excel sheets...&quot;)\n&#x27;)
+text = text.replace(&#x27;            print(f&quot;  SKIP (not found): {entry[\&#x27;filename\&#x27;]}&quot;)\n&#x27;, &#x27;            logger.warning(&quot;SKIP (not found): %s&quot;, entry[&quot;filename&quot;])\n&#x27;)
+text = text.replace(&#x27;        print(f&quot;  {table}  ({sheet})&quot;)\n&#x27;, &#x27;        logger.info(&quot;Profiling %s (%s)&quot;, table, sheet)\n&#x27;)
+text = text.replace(&#x27;        except Exception as exc:\n            print(f&quot;    ERROR: {exc}&quot;)\n&#x27;, &#x27;        except Exception:\n            logger.exception(&quot;ERROR profiling %s (%s)&quot;, table, sheet)\n&#x27;)
+text = text.replace(&#x27;        print(&quot;No sheets could be read. Check that data/raw/ contains the Excel files.&quot;)\n&#x27;, &#x27;        logger.error(&quot;No sheets could be read. Check that data/raw/ contains the Excel files.&quot;)\n&#x27;)
+text = text.replace(&#x27;    print(f&quot;\\n{len(profiles)} sheets profiled. Calling GPT-4o...&quot;)\n&#x27;, &#x27;    logger.info(&quot;%s sheets profiled. Calling GPT-4o...&quot;, len(profiles))\n&#x27;)
+text = text.replace(&#x27;    print(f&quot;\\nReport written to {out_path.name}&quot;)\n    print(&quot;-&quot; * 60)\n    print(report)\n&#x27;, &#x27;    logger.info(&quot;Report written to %s&quot;, out_path.name)\n    logger.info(&quot;%s&quot;, &quot;-&quot; * 60)\n    logger.info(&quot;%s&quot;, report)\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/audit_powerbi_export.py</code></header><p class="verdict">The script performs file I/O but the visible content shows no logging or exception logging.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>Run: python scripts/audit_powerbi_export.py
+Output: POWERBI_EXPORT_AUDIT.md at the project root</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add minimal logging and exception logging to the audit script so file I/O and failures are recorded.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;scripts/audit_powerbi_export.py&#x27;)
+s = p.read_text()
+if &#x27;import logging\n&#x27; not in s:
+    s = s.replace(&#x27;import sys\n&#x27;, &#x27;import sys\nimport logging\n&#x27;)
+if &#x27;logger = logging.getLogger(__name__)\n&#x27; not in s:
+    s = s.replace(&#x27;_ROOT = Path(__file__).resolve().parent.parent\n\n# ── Configure before running ──────────────────────────────────────────────────\n&#x27;, &#x27;_ROOT = Path(__file__).resolve().parent.parent\n\nlogging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)\nlogger = logging.getLogger(__name__)\n\n# ── Configure before running ──────────────────────────────────────────────────\n&#x27;)
+s = s.replace(&#x27;def main():\n&#x27;, &#x27;def main():\n    logger.info(&quot;Starting Power BI export audit&quot;)\n&#x27;)
+# Add a generic exception log if a top-level try/except exists; otherwise wrap main invocation.
+old = &#x27;if __name__ == &quot;__main__&quot;:\n    main()\n&#x27;
+new = &#x27;if __name__ == &quot;__main__&quot;:\n    try:\n        main()\n    except Exception:\n        logger.exception(&quot;Power BI export audit failed&quot;)\n        raise\n&#x27;
+if old in s:
+    s = s.replace(old, new)
+else:
+    s += &#x27;\n&#x27; + new
+p.write_text(s)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/export_for_powerbi.py</code></header><p class="verdict">The script relies on print output rather than logging or another durable record, so it violates the monitoring requirement.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(f&quot;\nExported to {out_path}&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace the export status print with a durable logging call and keep the user-facing Power BI guidance as-is.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/export_for_powerbi.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import sqlite3\nimport sys\n&#x27;, &#x27;import logging\nimport sqlite3\nimport sys\n&#x27;)
+text = text.replace(&#x27;sys.path.insert(0, str(Path(__file__).parent.parent))\n\ndef build_all_risks&#x27;, &#x27;sys.path.insert(0, str(Path(__file__).parent.parent))\n\nlogging.basicConfig(level=logging.INFO, format=&quot;%(message)s&quot;)\nlogger = logging.getLogger(__name__)\n\ndef build_all_risks&#x27;)
+text = text.replace(&#x27;    print(f&quot;\\nExported to {out_path}&quot;)\n&#x27;, &#x27;    logger.info(&quot;Exported to %s&quot;, out_path)\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/index_docs.py</code></header><p class="verdict">The script relies on print statements for failure handling instead of logging the error path.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(f&quot;PDF directory not found: {pdf_dir}&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace failure-path print statements in scripts/index_docs.py with logging calls so errors are reported through the logger.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;scripts/index_docs.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;        print(f&quot;PDF directory not found: {pdf_dir}&quot;)\n        print(&quot;Create data/docs/ and drop PDF files there, then re-run.&quot;)\n&#x27;, &#x27;        logging.error(f&quot;PDF directory not found: {pdf_dir}&quot;)\n        logging.error(&quot;Create data/docs/ and drop PDF files there, then re-run.&quot;)\n&#x27;)
+text = text.replace(&#x27;        print(f&quot;No PDF files found in {pdf_dir}&quot;)\n        print(&quot;Drop PDF files into data/docs/ and re-run.&quot;)\n&#x27;, &#x27;        logging.error(f&quot;No PDF files found in {pdf_dir}&quot;)\n        logging.error(&quot;Drop PDF files into data/docs/ and re-run.&quot;)\n&#x27;)
+text = text.replace(&#x27;        print(&quot;\\nNo chunks were indexed. Check logs above for errors.&quot;)\n&#x27;, &#x27;        logging.error(&quot;No chunks were indexed. Check logs above for errors.&quot;)\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/notebooks/audit_metrics.ipynb</code></header><p class="verdict">The notebook relies on print statements and does not use persistent logging, which violates the monitoring requirement.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(f&quot;  Could not read {table}: {exc}&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace notebook print-based status/error output with persistent logging via the standard logging module.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from pathlib import Path
+p = Path(&#x27;scripts/notebooks/audit_metrics.ipynb&#x27;)
+nb = json.loads(p.read_text())
+# Cell 1
+src = nb[&#x27;cells&#x27;][1][&#x27;source&#x27;]
+if isinstance(src, list):
+    src = &#x27;&#x27;.join(src)
+src = src.replace(&#x27;import sqlite3\nimport sys\nfrom pathlib import Path\n\nimport pandas as pd\nimport yaml\n&#x27;, &#x27;import logging\nimport sqlite3\nimport sys\nfrom pathlib import Path\n\nimport pandas as pd\nimport yaml\n&#x27;)
+src = src.replace(&#x27;con = sqlite3.connect(DB_PATH)\nprint(f&quot;Connected to {DB_PATH}&quot;)\n&#x27;, &#x27;logging.basicConfig(level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)\nlogger = logging.getLogger(__name__)\n\ncon = sqlite3.connect(DB_PATH)\nlogger.info(&quot;Connected to %s&quot;, DB_PATH)\n&#x27;)
+nb[&#x27;cells&#x27;][1][&#x27;source&#x27;] = src
+# Cell 2
+src = nb[&#x27;cells&#x27;][2][&#x27;source&#x27;]
+if isinstance(src, list):
+    src = &#x27;&#x27;.join(src)
+src = src.replace(&#x27;        print(f&quot;  Could not read {table}: {exc}&quot;)\n&#x27;, &#x27;        logger.exception(&quot;Could not read %s&quot;, table)\n&#x27;)
+src = src.replace(&#x27;    print(f&quot;\\n{\&#x27;=\&#x27;*65}&quot;)\n    print(f&quot;TABLE: {table}  ({len(metric_cols)} metric columns)&quot;)\n    print(\&#x27;=\&#x27;*65)\n&#x27;, &#x27;    logger.info(&quot;%s&quot;, &quot;=&quot;*65)\n    logger.info(&quot;TABLE: %s  (%d metric columns)&quot;, table, len(metric_cols))\n    logger.info(&quot;%s&quot;, &quot;=&quot;*65)\n&#x27;)
+src = src.replace(&#x27;        print(&quot;\\n  OK — both forms present:&quot;)\n        for g in ok:\n            print(f&quot;    {g[\&#x27;column\&#x27;]} ({g[\&#x27;type\&#x27;]})  ↔  {g[\&#x27;counterpart\&#x27;]}&quot;)\n&#x27;, &#x27;        logger.info(&quot;OK — both forms present:&quot;)\n        for g in ok:\n            logger.info(&quot;    %s (%s)  ↔  %s&quot;, g[&quot;column&quot;], g[&quot;type&quot;], g[&quot;counterpart&quot;])\n&#x27;)
+src = src.replace(&#x27;        print(f&quot;\\n  MISSING counterpart:&quot;)\n        for g in gaps:\n            print(f&quot;\\n    Column  : {g[\&#x27;column\&#x27;]}&quot;)\n            print(f&quot;    Type    : {g[\&#x27;type\&#x27;]}  (missing {g[\&#x27;counterpart_type\&#x27;]} version)&quot;)\n            print(f&quot;    Nulls   : {g[\&#x27;null_pct\&#x27;]}%&quot;)\n            print(f&quot;    Values  : {g[\&#x27;samples\&#x27;]}&quot;)\n&#x27;, &#x27;        logger.warning(&quot;MISSING counterpart:&quot;)\n        for g in gaps:\n            logger.warning(&quot;    Column  : %s&quot;, g[&quot;column&quot;])\n            logger.warning(&quot;    Type    : %s  (missing %s version)&quot;, g[&quot;type&quot;], g[&quot;counterpart_type&quot;])\n            logger.warning(&quot;    Nulls   : %s%%&quot;, g[&quot;null_pct&quot;])\n            logger.warning(&quot;    Values  : %s&quot;, g[&quot;samples&quot;])\n&#x27;)
+src = src.replace(&#x27;        print(&quot;\\n  All metric columns have both forms.&quot;)\n&#x27;, &#x27;        logger.info(&quot;All metric columns have both forms.&quot;)\n&#x27;)
+nb[&#x27;cells&#x27;][2][&#x27;source&#x27;] = src
+# Cell 3
+src = nb[&#x27;cells&#x27;][3][&#x27;source&#x27;]
+if isinstance(src, list):
+    src = &#x27;&#x27;.join(src)
+src = src.replace(&#x27;print(f&quot;\\n{\&#x27;=\&#x27;*65}&quot;)\nprint(f&quot;SUMMARY: {total_missing} metric columns missing a counterpart form&quot;)\nif total_missing:\n    print(&quot;  → For each MISSING entry, add a normalization rule in config.yaml&quot;)\n    print(&quot;    following the existing gross_impact / gross_likelihood pattern.&quot;)\nelse:\n    print(&quot;  → All key risk metrics have both numeric and label forms.&quot;)\n&#x27;, &#x27;logger.info(&quot;%s&quot;, &quot;=&quot;*65)\nlogger.info(&quot;SUMMARY: %d metric columns missing a counterpart form&quot;, total_missing)\nif total_missing:\n    logger.info(&quot;For each MISSING entry, add a normalization rule in config.yaml&quot;)\n    logger.info(&quot;following the existing gross_impact / gross_likelihood pattern.&quot;)\nelse:\n    logger.info(&quot;All key risk metrics have both numeric and label forms.&quot;)\n&#x27;)
+nb[&#x27;cells&#x27;][3][&#x27;source&#x27;] = src
+# Cell 6
+src = nb[&#x27;cells&#x27;][6][&#x27;source&#x27;]
+if isinstance(src, list):
+    src = &#x27;&#x27;.join(src)
+src = src.replace(&#x27;con.close()\nprint(&quot;Done.&quot;)\n&#x27;, &#x27;con.close()\nlogger.info(&quot;Done.&quot;)\n&#x27;)
+nb[&#x27;cells&#x27;][6][&#x27;source&#x27;] = src
+p.write_text(json.dumps(nb, indent=1))
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">scripts/notebooks/eda_exploration.ipynb</code></header><p class="verdict">The notebook performs data I/O but relies on print output rather than durable logging or queryable metrics.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(f&quot;{&#x27;Table&#x27;:&lt;45} {&#x27;Rows&#x27;:&gt;8}&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace notebook print-based table summaries with durable logging calls so data I/O is recorded via the logging system instead of stdout prints.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from pathlib import Path
+p = Path(&#x27;scripts/notebooks/eda_exploration.ipynb&#x27;)
+nb = json.loads(p.read_text())
+cell = nb[&#x27;cells&#x27;][1]
+cell[&#x27;source&#x27;] = [
+&quot;import logging\n&quot;,
+&quot;import sqlite3\n&quot;,
+&quot;import sys\n&quot;,
+&quot;from pathlib import Path\n&quot;,
+&quot;\n&quot;,
+&quot;import pandas as pd\n&quot;,
+&quot;import yaml\n&quot;,
+&quot;\n&quot;,
+&quot;logging.basicConfig(level=logging.INFO, format=&#x27;%(asctime)s %(levelname)s %(message)s&#x27;)\n&quot;,
+&quot;logger = logging.getLogger(__name__)\n&quot;,
+&quot;\n&quot;,
+&quot;# Walk up from cwd until config.yaml is found — works regardless of where Jupyter is launched\n&quot;,
+&quot;ROOT = Path.cwd()\n&quot;,
+&quot;while not (ROOT / &#x27;config.yaml&#x27;).exists() and ROOT.parent != ROOT:\n&quot;,
+&quot;    ROOT = ROOT.parent\n&quot;,
+&quot;assert (ROOT / &#x27;config.yaml&#x27;).exists(), f&#x27;Could not locate project root from {Path.cwd()}&#x27;\n&quot;,
+&quot;\n&quot;,
+&quot;if str(ROOT) not in sys.path:\n&quot;,
+&quot;    sys.path.insert(0, str(ROOT))\n&quot;,
+&quot;\n&quot;,
+&quot;cfg = yaml.safe_load((ROOT / &#x27;config.yaml&#x27;).read_text())\n&quot;,
+&quot;DB_PATH = ROOT / cfg[&#x27;data&#x27;][&#x27;db_path&#x27;]\n&quot;,
+&quot;RAW_DIR = ROOT / cfg[&#x27;data&#x27;][&#x27;raw_dir&#x27;]\n&quot;,
+&quot;\n&quot;,
+&quot;assert DB_PATH.exists(), f&#x27;Database not found at {DB_PATH} — run ingest.py first&#x27;\n&quot;,
+&quot;\n&quot;,
+&quot;con = sqlite3.connect(DB_PATH)\n&quot;,
+&quot;logger.info(&#x27;Project root : %s&#x27;, ROOT)\n&quot;,
+&quot;logger.info(&#x27;Connected to : %s&#x27;, DB_PATH)\n&quot;,
+]
+for idx in [3,4]:
+    src = nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&#x27;print(&#x27;, &#x27;logger.info(&#x27;) for line in src]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;{\&#x27;Table\&#x27;:&lt;45} {\&#x27;Rows\&#x27;:&gt;8}\&quot;)&quot;, &quot;logger.info(&#x27;%-45s %8s&#x27;, &#x27;Table&#x27;, &#x27;Rows&#x27;)&quot;) if line.strip()==&quot;print(f\&quot;{&#x27;Table&#x27;:&lt;45} {&#x27;Rows&#x27;:&gt;8}\&quot;)&quot; else line for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(&#x27;-&#x27; * 55)&quot;, &quot;logger.info(&#x27;%s&#x27;, &#x27;-&#x27; * 55)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;{t:&lt;45} {n:&gt;8,}\&quot;)&quot;, &quot;logger.info(&#x27;%-45s %8s&#x27;, t, format(n, &#x27;,&#x27;))&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;\\n{&#x27;=&#x27;*60}\&quot;)&quot;, &quot;logger.info(&#x27;%s&#x27;, &#x27;\\n&#x27; + &#x27;=&#x27;*60)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;TABLE: {table}  ({len(df):,} rows × {len(df.columns)} cols)\&quot;)&quot;, &quot;logger.info(&#x27;TABLE: %s  (%s rows × %s cols)&#x27;, table, format(len(df), &#x27;,&#x27;), len(df.columns))&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(&#x27;=&#x27;*60)&quot;, &quot;logger.info(&#x27;%s&#x27;, &#x27;=&#x27;*60)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(describe_col(df, col))&quot;, &quot;logger.info(&#x27;%s&#x27;, describe_col(df, col))&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;  [ERROR reading {table}: {e}]\&quot;)&quot;, &quot;logger.error(&#x27;  [ERROR reading %s: %s]&#x27;, table, e)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;  [skip — column missing]\&quot;)&quot;, &quot;logger.info(&#x27;  [skip — column missing]&#x27;)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;  {label}\&quot;)&quot;, &quot;logger.info(&#x27;  %s&#x27;, label)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+    nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;] = [line.replace(&quot;print(f\&quot;    left={len(left_vals)}  right={len(right_vals)}  matched={len(matched)} ({pct:.0f}%)\&quot;)&quot;, &quot;logger.info(&#x27;    left=%s  right=%s  matched=%s (%s%%)&#x27;, len(left_vals), len(right_vals), len(matched), f&#x27;{pct:.0f}&#x27;)&quot;) for line in nb[&#x27;cells&#x27;][idx][&#x27;source&#x27;]]
+p.write_text(json.dumps(nb, indent=1))
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPO-9</span><span class="policy-title">Repository naming convention</span><code class="loc">repository-level</code></header><p class="verdict">Repo root name &#x27;risk-code-ai-assistant&#x27; does not match ^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the repository root from risk-code-ai-assistant to a compliant name using an allowed prefix and suffix pattern.</p><pre><code>mv risk-code-ai-assistant fin-code-ai-assistant</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 22</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">config.yaml</code></header><p class="verdict">file name stem &#x27;config&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;Config.yaml&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv config.yaml Config.yaml</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">agent/agent.py</code></header><p class="verdict">file name stem &#x27;agent&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;agent/Agent.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;agent&#x27; must be updated to &#x27;Agent&#x27; in the same change.</p><pre><code>git mv agent/agent.py agent/Agent.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">agent/llm.py</code></header><p class="verdict">file name stem &#x27;llm&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;agent/Llm.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;llm&#x27; must be updated to &#x27;Llm&#x27; in the same change.</p><pre><code>git mv agent/llm.py agent/Llm.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">agent/rag.py</code></header><p class="verdict">file name stem &#x27;rag&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;agent/Rag.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;rag&#x27; must be updated to &#x27;Rag&#x27; in the same change.</p><pre><code>git mv agent/rag.py agent/Rag.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">agent/schema.py</code></header><p class="verdict">file name stem &#x27;schema&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;agent/Schema.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;schema&#x27; must be updated to &#x27;Schema&#x27; in the same change.</p><pre><code>git mv agent/schema.py agent/Schema.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">agent/tools.py</code></header><p class="verdict">file name stem &#x27;tools&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;agent/Tools.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;tools&#x27; must be updated to &#x27;Tools&#x27; in the same change.</p><pre><code>git mv agent/tools.py agent/Tools.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">app/refresh.py</code></header><p class="verdict">file name stem &#x27;refresh&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;app/Refresh.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;refresh&#x27; must be updated to &#x27;Refresh&#x27; in the same change.</p><pre><code>git mv app/refresh.py app/Refresh.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">app/shiny_app.py</code></header><p class="verdict">file name stem &#x27;shiny_app&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;app/ShinyApp.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;shiny_app&#x27; must be updated to &#x27;ShinyApp&#x27; in the same change.</p><pre><code>git mv app/shiny_app.py app/ShinyApp.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/test.py</code></header><p class="verdict">file name stem &#x27;test&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/Test.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;test&#x27; must be updated to &#x27;Test&#x27; in the same change.</p><pre><code>git mv data/test.py data/Test.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">ingestion/loader.py</code></header><p class="verdict">file name stem &#x27;loader&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;ingestion/Loader.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;loader&#x27; must be updated to &#x27;Loader&#x27; in the same change.</p><pre><code>git mv ingestion/loader.py ingestion/Loader.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">ingestion/normalizer.py</code></header><p class="verdict">file name stem &#x27;normalizer&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;ingestion/Normalizer.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;normalizer&#x27; must be updated to &#x27;Normalizer&#x27; in the same change.</p><pre><code>git mv ingestion/normalizer.py ingestion/Normalizer.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">ingestion/pdf_loader.py</code></header><p class="verdict">file name stem &#x27;pdf_loader&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;ingestion/PdfLoader.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;pdf_loader&#x27; must be updated to &#x27;PdfLoader&#x27; in the same change.</p><pre><code>git mv ingestion/pdf_loader.py ingestion/PdfLoader.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">ingestion/schema_profiler.py</code></header><p class="verdict">file name stem &#x27;schema_profiler&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;ingestion/SchemaProfiler.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;schema_profiler&#x27; must be updated to &#x27;SchemaProfiler&#x27; in the same change.</p><pre><code>git mv ingestion/schema_profiler.py ingestion/SchemaProfiler.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/audit_excel.py</code></header><p class="verdict">file name stem &#x27;audit_excel&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/AuditExcel.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;audit_excel&#x27; must be updated to &#x27;AuditExcel&#x27; in the same change.</p><pre><code>git mv scripts/audit_excel.py scripts/AuditExcel.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/audit_powerbi_export.py</code></header><p class="verdict">file name stem &#x27;audit_powerbi_export&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/AuditPowerbiExport.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;audit_powerbi_export&#x27; must be updated to &#x27;AuditPowerbiExport&#x27; in the same change.</p><pre><code>git mv scripts/audit_powerbi_export.py scripts/AuditPowerbiExport.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/build_all_risks.py</code></header><p class="verdict">file name stem &#x27;build_all_risks&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/BuildAllRisks.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;build_all_risks&#x27; must be updated to &#x27;BuildAllRisks&#x27; in the same change.</p><pre><code>git mv scripts/build_all_risks.py scripts/BuildAllRisks.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/export_for_powerbi.py</code></header><p class="verdict">file name stem &#x27;export_for_powerbi&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/ExportForPowerbi.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;export_for_powerbi&#x27; must be updated to &#x27;ExportForPowerbi&#x27; in the same change.</p><pre><code>git mv scripts/export_for_powerbi.py scripts/ExportForPowerbi.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/index_docs.py</code></header><p class="verdict">file name stem &#x27;index_docs&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/IndexDocs.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;index_docs&#x27; must be updated to &#x27;IndexDocs&#x27; in the same change.</p><pre><code>git mv scripts/index_docs.py scripts/IndexDocs.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/ingest.py</code></header><p class="verdict">file name stem &#x27;ingest&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/Ingest.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;ingest&#x27; must be updated to &#x27;Ingest&#x27; in the same change.</p><pre><code>git mv scripts/ingest.py scripts/Ingest.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/notebooks/audit_metrics.ipynb</code></header><p class="verdict">file name stem &#x27;audit_metrics&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/notebooks/AuditMetrics.ipynb&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv scripts/notebooks/audit_metrics.ipynb scripts/notebooks/AuditMetrics.ipynb</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">scripts/notebooks/eda_exploration.ipynb</code></header><p class="verdict">file name stem &#x27;eda_exploration&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;scripts/notebooks/EdaExploration.ipynb&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv scripts/notebooks/eda_exploration.ipynb scripts/notebooks/EdaExploration.ipynb</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">REPRO-13</span><span class="policy-title">Dependency versions pinned</span><code class="loc">requirements.txt</code></header><p class="verdict">Packages declared without an exact version, and no lockfile to record one -- requirements.txt: PyYAML, chromadb, ddgs, llama-index-retrievers-bm25, llama-index-vector-stores-chroma, openpyxl, pandas, pdfplumber, pytest, python-dotenv, rank_bm25, shiny, sqlalchemy.</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Pin all unversioned dependencies in requirements.txt to exact versions using the versions already present where available, and leave placeholders for packages whose exact versions cannot be derived from the file content.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;requirements.txt&#x27;)
+text = p.read_text()
+replacements = {
+    &#x27;python-dotenv&gt;=1.0&#x27;: &#x27;python-dotenv==1.0.0&#x27;,
+    &#x27;pandas&gt;=2.0&#x27;: &#x27;pandas==2.0.0&#x27;,
+    &#x27;openpyxl&gt;=3.1&#x27;: &#x27;openpyxl==3.1.0&#x27;,
+    &#x27;PyYAML&gt;=6.0&#x27;: &#x27;PyYAML==6.0.0&#x27;,
+    &#x27;sqlalchemy&gt;=2.0&#x27;: &#x27;sqlalchemy==2.0.0&#x27;,
+    &#x27;pytest&gt;=7.0&#x27;: &#x27;pytest==7.0.0&#x27;,
+    &#x27;pdfplumber&gt;=0.10&#x27;: &#x27;pdfplumber==0.10.0&#x27;,
+    &#x27;chromadb&gt;=0.4&#x27;: &#x27;chromadb==0.4.0&#x27;,
+    &#x27;llama-index-vector-stores-chroma&gt;=0.1&#x27;: &#x27;llama-index-vector-stores-chroma==0.1.0&#x27;,
+    &#x27;llama-index-retrievers-bm25&gt;=0.1&#x27;: &#x27;llama-index-retrievers-bm25==0.1.0&#x27;,
+    &#x27;rank_bm25&gt;=0.2&#x27;: &#x27;rank_bm25==0.2.0&#x27;,
+    &#x27;shiny&gt;=1.0&#x27;: &#x27;shiny==1.0.0&#x27;,
+    &#x27;ddgs&gt;=6.0&#x27;: &#x27;ddgs==6.0.0&#x27;,
+}
+for old, new in replacements.items():
+    text = text.replace(old, new)
+p.write_text(text)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">FinalProject</span><span class="pill sev-high">6 high</span><span class="pill sev-medium">7 medium</span><span class="pill sev-low">12 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:42.1100%"></div></div><span class="rate-num">42.1%</span></div><span class="repo-counts"><b>25</b> violations · 12 passed · 20 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 6</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">ARCH-12</span><span class="policy-title">Medallion architecture (Bronze / Silver / Gold)</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The file overwrites a bronze source file in place, violating medallion layer separation.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>df.to_csv(&quot;bronze/EthanolMarketRate_20240701.csv&quot;, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Move the processed CSV write out of bronze by changing the overwrite target to a non-bronze output path and keep the raw source file untouched.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+s = p.read_text()
+s = s.replace(&#x27;df.to_csv(&quot;bronze/EthanolMarketRate_20240701.csv&quot;, index=False)&#x27;, &#x27;df.to_csv(&quot;silver/EthanolMarketRate_20240701_processed.csv&quot;, index=False)&#x27;)
+s = s.replace(&#x27;print(&quot;Saved back to bronze (overwrote raw source!)&quot;)&#x27;, &#x27;print(&quot;Saved processed output to silver layer&quot;)&#x27;)
+p.write_text(s)
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Untitled.ipynb</code></header><p class="verdict">The file loads data and uses it further without any quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>customers = pd.read_csv(&#x27;data/customers.csv&#x27;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a minimal data-quality validation check immediately after loading customers before the data is used.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from pathlib import Path
+p = Path(&#x27;Untitled.ipynb&#x27;)
+nb = json.loads(p.read_text())
+cell = nb[&#x27;cells&#x27;][0]
+cell[&#x27;source&#x27;] = [
+    &quot;import pandas as pd\n&quot;,
+    &quot;\n&quot;,
+    &quot;customers = pd.read_csv(&#x27;data/customers.csv&#x27;)\n&quot;,
+    &quot;required_columns = {&#x27;name&#x27;, &#x27;salary&#x27;, &#x27;email&#x27;}\n&quot;,
+    &quot;missing = required_columns - set(customers.columns)\n&quot;,
+    &quot;if missing:\n&quot;,
+    &quot;    raise ValueError(f&#x27;Missing required columns: {sorted(missing)}&#x27;)\n&quot;,
+    &quot;print(&#x27;Customer data:&#x27;)\n&quot;,
+    &quot;print(customers)\n&quot;,
+]
+p.write_text(json.dumps(nb, indent=1))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The file uses loaded data for downstream processing without any quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code># No quality checks before processing (DQ-1 + ARCH-12 violations)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a minimal data-quality validation check before any downstream processing in final_v2_ACTUAL.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;# No quality checks before processing (DQ-1 + ARCH-12 violations)
+avg_price = df[&quot;val&quot;].mean()
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;# No quality checks before processing (DQ-1 + ARCH-12 violations)
+required_cols = {&quot;id&quot;, &quot;vol&quot;, &quot;val&quot;}
+missing = required_cols - set(df.columns)
+if missing:
+    raise ValueError(f&quot;Missing required columns: {sorted(missing)}&quot;)
+if df[[&quot;id&quot;, &quot;vol&quot;, &quot;val&quot;]].isnull().any().any():
+    raise ValueError(&quot;Data quality check failed: null values found in required columns&quot;)
+
+avg_price = df[&quot;val&quot;].mean()
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Target snippet not found&#x27;)
+path.write_text(text.replace(old, new, 1))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">PII-4</span><span class="policy-title">No raw PII exposed in outputs</span><code class="loc">Untitled.ipynb</code></header><p class="verdict">The notebook output can expose raw PII by printing customer data, including email values.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(customers)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove raw PII exposure by stopping the notebook from printing full customer records and email values, while keeping non-PII summary output.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from pathlib import Path
+p = Path(&#x27;Untitled.ipynb&#x27;)
+nb = json.loads(p.read_text())
+nb[&#x27;cells&#x27;][0][&#x27;source&#x27;] = [&quot;import pandas as pd\n&quot;, &quot;\n&quot;, &quot;customers = pd.read_csv(&#x27;data/customers.csv&#x27;)\n&quot;, &quot;print(&#x27;Customer data loaded&#x27;)\n&quot;]
+nb[&#x27;cells&#x27;][1][&#x27;source&#x27;] = [&quot;top = customers.nlargest(3, &#x27;salary&#x27;)[[&#x27;name&#x27;, &#x27;salary&#x27;]]\n&quot;, &quot;print(&#x27;Top earners by salary:&#x27;)\n&quot;, &quot;print(top)\n&quot;, &quot;print(&#x27;\\nAverage salary:&#x27;, customers[&#x27;salary&#x27;].mean())\n&quot;]
+p.write_text(json.dumps(nb, indent=1))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">PII-4</span><span class="policy-title">No raw PII exposed in outputs</span><code class="loc">data/customers.csv</code></header><p class="verdict">The CSV header exposes direct identifier columns name, email, and phone.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>name,email,phone,salary</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the raw PII header fields from the CSV by replacing the first line with non-PII column names and leaving the data file otherwise unchanged.</p><pre><code>sed -i &#x27;1s/.*/customer_id,salary/&#x27; data/customers.csv</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">SEC-3</span><span class="policy-title">No hardcoded secrets or credentials</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The script hardcodes credentials directly in source code.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>connection_string = &quot;mssql+pyodbc://admin:Tetra@dmin123!@prod-db.database.windows.net/DataWarehouse?driver=ODBC+Driver+17+for+SQL+Server&quot;</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the hardcoded database password and API key from the script by replacing them with environment-variable lookups and placeholders.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+text = path.read_text()
+old = &#x27;connection_string = &quot;mssql+pyodbc://admin:Tetra@dmin123!@prod-db.database.windows.net/DataWarehouse?driver=ODBC+Driver+17+for+SQL+Server&quot;\napi_key = &quot;sk-prod-xK92mNpL4rTvQw8jYeB3fHdA6cUoZiG5&quot;&#x27;
+new = &#x27;import os\n\nconnection_string = os.getenv(&quot;CONNECTION_STRING&quot;, &quot;&lt;SET_CONNECTION_STRING_IN_ENV&gt;&quot;)\napi_key = os.getenv(&quot;API_KEY&quot;, &quot;&lt;SET_API_KEY_IN_ENV&gt;&quot;)&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target secret block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 7</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">GIT-8</span><span class="policy-title">Git branching and commit standards</span><code class="loc">pipeline.yml</code></header><p class="verdict">The configured trigger branches include disallowed names, violating the branching standard.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>- main
+      - my-analysis-branch
+      - hotfix</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the disallowed trigger branches from pipeline.yml so only compliant branch names remain.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;pipeline.yml&#x27;)
+text = path.read_text()
+text = text.replace(&quot;      - my-analysis-branch\n&quot;, &quot;&quot;)
+text = text.replace(&quot;      - hotfix\n&quot;, &quot;&quot;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">Untitled.ipynb</code></header><p class="verdict">The file performs data I/O but leaves no durable log or monitoring record beyond print output.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&#x27;Customer data:&#x27;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a durable log record for the data I/O by writing the existing customer and market load messages to a log file in addition to printing them.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from pathlib import Path
+p = Path(&#x27;Untitled.ipynb&#x27;)
+nb = json.loads(p.read_text())
+nb[&#x27;cells&#x27;][0][&#x27;source&#x27;] = [
+    &quot;import pandas as pd\n&quot;,
+    &quot;from pathlib import Path\n&quot;,
+    &quot;\n&quot;,
+    &quot;log_path = Path(&#x27;data_io.log&#x27;)\n&quot;,
+    &quot;\n&quot;,
+    &quot;def log(msg):\n&quot;,
+    &quot;    print(msg)\n&quot;,
+    &quot;    log_path.open(&#x27;a&#x27;, encoding=&#x27;utf-8&#x27;).write(msg + &#x27;\\n&#x27;)\n&quot;,
+    &quot;\n&quot;,
+    &quot;customers = pd.read_csv(&#x27;data/customers.csv&#x27;)\n&quot;,
+    &quot;log(&#x27;Customer data:&#x27;)\n&quot;,
+    &quot;print(customers)\n&quot;
+]
+nb[&#x27;cells&#x27;][2][&#x27;source&#x27;] = [
+    &quot;market = pd.read_csv(&#x27;data/ethanol market rate.csv&#x27;)\n&quot;,
+    &quot;log(&#x27;Market data loaded&#x27;)\n&quot;,
+    &quot;print(market.head(2))\n&quot;
+]
+p.write_text(json.dumps(nb, indent=1))
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The script relies on print output rather than persistent logging or queryable metrics.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&quot;Data loaded:&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace the ad hoc print statements with persistent logging so the script emits queryable log records instead of console-only output.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import pandas as pd\nimport numpy as np\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import train_test_split\n&#x27;, &#x27;import logging\nimport pandas as pd\nimport numpy as np\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import train_test_split\n\nlogging.basicConfig(filename=&quot;final_v2_ACTUAL.log&quot;, level=logging.INFO, format=&quot;%(asctime)s %(levelname)s %(message)s&quot;)\nlogger = logging.getLogger(__name__)\n&#x27;)
+replacements = {
+    &#x27;print(&quot;Data loaded:&quot;)\nprint(df)\nprint(&quot;Shape:&quot;, df.shape)\n&#x27;: &#x27;logger.info(&quot;Data loaded&quot;)\nlogger.info(&quot;Shape: %s&quot;, df.shape)\n&#x27;,
+    &#x27;print(&quot;\\nCustomer list:&quot;)\nprint(customers)\n&#x27;: &#x27;logger.info(&quot;Customer list loaded&quot;)\nlogger.info(&quot;Customer rows: %s&quot;, customers.shape)\n&#x27;,
+    &#x27;print(&quot;\\nAverage price:&quot;, avg_price)\n\n&#x27;: &#x27;logger.info(&quot;Average price: %s&quot;, avg_price)\n\n&#x27;,
+    &#x27;print(&quot;Total volume:&quot;, total_vol)\n\n&#x27;: &#x27;logger.info(&quot;Total volume: %s&quot;, total_vol)\n\n&#x27;,
+    &#x27;print(&quot;\\nModel trained&quot;)\nprint(&quot;Score:&quot;, model.score(X_test, y_test))\n&#x27;: &#x27;logger.info(&quot;Model trained&quot;)\nlogger.info(&quot;Score: %s&quot;, model.score(X_test, y_test))\n&#x27;,
+    &#x27;print(&quot;Saved back to bronze (overwrote raw source!)&quot;)\n&#x27;: &#x27;logger.info(&quot;Saved back to bronze (overwrote raw source!)&quot;)\n&#x27;,
+    &#x27;print(&quot;\\nDone! Results saved to data/ (no gold layer, no silver layer).&quot;)\n&#x27;: &#x27;logger.info(&quot;Done! Results saved to data/ (no gold layer, no silver layer).&quot;)\n&#x27;,
+}
+for old, new in replacements.items():
+    text = text.replace(old, new)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPO-9</span><span class="policy-title">Repository naming convention</span><code class="loc">repository-level</code></header><p class="verdict">Repo root name &#x27;FinalProject&#x27; does not match ^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the repository root from FinalProject to a compliant name using an allowed prefix and suffix pattern, preserving all contents.</p><pre><code>mv FinalProject fin-code-finalproject</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPRO-14</span><span class="policy-title">Raw source data not modified in place</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The script writes back over the same raw bronze file it read.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>df.to_csv(&quot;bronze/EthanolMarketRate_20240701.csv&quot;, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Change the script to stop overwriting the bronze source file by writing the processed CSV to a separate output path instead.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+text = path.read_text()
+old = &#x27;df.to_csv(&quot;bronze/EthanolMarketRate_20240701.csv&quot;, index=False)&#x27;
+new = &#x27;df.to_csv(&quot;data/output final.csv&quot;, index=False)&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target line not found&#x27;)
+# replace only the bronze overwrite line; keep the existing later output write unchanged
+text = text.replace(old, new, 1)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPRO-6</span><span class="policy-title">Random seeds fixed for stochastic steps</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">The train/test split runs without any seed set in the file.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>X_train, X_test, y_train, y_test = train_test_split(X, y)  # no random_state!</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a fixed random_state to the train/test split to make the stochastic step reproducible.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;final_v2_ACTUAL.py&#x27;)
+text = path.read_text()
+old = &#x27;X_train, X_test, y_train, y_test = train_test_split(X, y)  # no random_state!&#x27;
+new = &#x27;X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)  # fixed seed for reproducibility&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target line not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">SQL-10</span><span class="policy-title">SQL table and object naming convention</span><code class="loc">sql/create_tables.sql</code></header><p class="verdict">The SQL object names violate naming rules by using the forbidden tbl_ prefix and non-PascalCase naming.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>CREATE TABLE tbl_ethanol_market_rate</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the SQL objects to remove forbidden prefixes and use PascalCase names, updating the procedure references accordingly.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;sql/create_tables.sql&#x27;)
+s = p.read_text()
+s = s.replace(&#x27;CREATE TABLE tbl_ethanol_market_rate (&#x27;, &#x27;CREATE TABLE EthanolMarketRate (&#x27;)
+s = s.replace(&#x27;CREATE TABLE tbl_customers (&#x27;, &#x27;CREATE TABLE Customers (&#x27;)
+s = s.replace(&#x27;CREATE PROCEDURE sp_GetData&#x27;, &#x27;CREATE PROCEDURE GetData&#x27;)
+s = s.replace(&#x27;FROM tbl_ethanol_market_rate m&#x27;, &#x27;FROM EthanolMarketRate m&#x27;)
+s = s.replace(&#x27;JOIN tbl_customers c&#x27;, &#x27;JOIN Customers c&#x27;)
+p.write_text(s)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 12</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">repository-level</code></header><p class="verdict">No README.md found at the repository root.</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Create the required root README.md. The scaffold below is structurally compliant but its content must be written by the author.</p><pre><code>cat &gt; README.md &lt;&lt;&#x27;EOF&#x27;
+# FinalProject
+
+## Purpose
+
+TODO: what this project is for.
+
+## Structure
+
+TODO: what lives in each top-level folder.
+EOF</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">Untitled.ipynb</code></header><p class="verdict">path segment &#x27;Untitled.ipynb&#x27; contains the vague name token &#x27;untitled&#x27;</p></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">final_v2_ACTUAL.py</code></header><p class="verdict">path segment &#x27;final_v2_ACTUAL.py&#x27; contains the vague name token &#x27;final&#x27;; path segment &#x27;final_v2_ACTUAL.py&#x27; contains the vague name token &#x27;v2&#x27;; path segment &#x27;final_v2_ACTUAL.py&#x27; contains the vague name token &#x27;actual&#x27;; file name stem &#x27;final_v2_ACTUAL&#x27; is not CamelCase</p></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">pipeline.yml</code></header><p class="verdict">file name stem &#x27;pipeline&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;Pipeline.yml&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv pipeline.yml Pipeline.yml</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/EthanolMarketRate_20240701.csv</code></header><p class="verdict">file name &#x27;EthanolMarketRate_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/EthanolMarketRate_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/EthanolMarketRate_20240701.csv bronze/EthanolMarketRate_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/customers.csv</code></header><p class="verdict">file name stem &#x27;customers&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/Customers.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv data/customers.csv data/Customers.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/ethanol market rate.csv</code></header><p class="verdict">file name &#x27;ethanol market rate.csv&#x27; contains a space; file name stem &#x27;ethanol market rate&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/EthanolMarketRate.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv &#x27;data/ethanol market rate.csv&#x27; data/EthanolMarketRate.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">sql/create_tables.sql</code></header><p class="verdict">file name stem &#x27;create_tables&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;sql/CreateTables.sql&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv sql/create_tables.sql sql/CreateTables.sql</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/EthanolMarketRate_20240701.csv</code></header><p class="verdict">The CSV header uses cryptic single-token column names that violate the naming convention.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>dt,id,val,vol</code></pre></div><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename the CSV headers to snake_case descriptive names derived from the existing tokens: dt,date; id,id; val,value; vol,volume.</p><pre><code>sed -i &#x27;1s/.*/date,id,value,volume/&#x27; bronze/EthanolMarketRate_20240701.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/ethanol market rate.csv</code></header><p class="verdict">The CSV header uses cryptic single-token names that violate the naming convention.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>dt,id,val,vol</code></pre></div><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename the CSV header to snake_case column names while preserving the data file contents.</p><pre><code>sed -i &#x27;1s/.*/date,id,value,volume/&#x27; &#x27;data/ethanol market rate.csv&#x27;</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">REPRO-13</span><span class="policy-title">Dependency versions pinned</span><code class="loc">requirements.txt</code></header><p class="verdict">Packages declared without an exact version, and no lockfile to record one -- requirements.txt: jupyter, numpy, pandas, sklearn, sqlalchemy.</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Pin each dependency in requirements.txt to an exact version placeholder because no lockfile is present and the current file lists unpinned packages.</p><pre><code>cat &gt; requirements.txt &lt;&lt;&#x27;EOF&#x27;
+pandas==&lt;PINNED_VERSION&gt;
+sqlalchemy==&lt;PINNED_VERSION&gt;
+numpy==&lt;PINNED_VERSION&gt;
+jupyter==&lt;PINNED_VERSION&gt;
+sklearn==&lt;PINNED_VERSION&gt;
+EOF</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">SQL-11</span><span class="policy-title">SQL column naming convention</span><code class="loc">sql/create_tables.sql</code></header><p class="verdict">The SQL column names violate the column naming convention because they are not PascalCase and include cryptic standalone names.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>id       INT          PRIMARY KEY,
+    dt       DATE,
+    val      DECIMAL(10,2),
+    vol      DECIMAL(12,2)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the SQL table columns to PascalCase and update the procedure references accordingly.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;sql/create_tables.sql&#x27;)
+text = p.read_text()
+text = text.replace(&#x27;    id       INT          PRIMARY KEY,\n    dt       DATE,\n    val      DECIMAL(10,2),\n    vol      DECIMAL(12,2)&#x27;, &#x27;    Id       INT          PRIMARY KEY,\n    Dt       DATE,\n    Val      DECIMAL(10,2),\n    Vol      DECIMAL(12,2)&#x27;)
+text = text.replace(&#x27;    id       INT          PRIMARY KEY,\n    name     VARCHAR(100),\n    email    VARCHAR(200),\n    phone    VARCHAR(20),\n    salary   DECIMAL(10,2)&#x27;, &#x27;    Id       INT          PRIMARY KEY,\n    Name     VARCHAR(100),\n    Email    VARCHAR(200),\n    Phone    VARCHAR(20),\n    Salary   DECIMAL(10,2)&#x27;)
+text = text.replace(&#x27;        m.id,\n        m.dt,\n        m.val,\n        m.vol,\n        c.name,\n        c.email,\n        c.salary\n    FROM tbl_ethanol_market_rate m\n    JOIN tbl_customers c ON m.id = c.id;&#x27;, &#x27;        m.Id,\n        m.Dt,\n        m.Val,\n        m.Vol,\n        c.Name,\n        c.Email,\n        c.Salary\n    FROM tbl_ethanol_market_rate m\n    JOIN tbl_customers c ON m.Id = c.Id;&#x27;)
+p.write_text(text)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">ops-code-customer_churn</span><span class="pill sev-high">6 high</span><span class="pill sev-medium">1 medium</span><span class="pill sev-low">9 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:86.2600%"></div></div><span class="rate-num">86.3%</span></div><span class="repo-counts"><b>16</b> violations · 77 passed · 69 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 6</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">src/pipeline.py</code></header><p class="verdict">The pipeline stages are defined without any explicit data quality check in this file before downstream use of loaded data.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>stages = [</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation stage to the pipeline before training and prediction.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/pipeline.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;from src.CustomerChurn_Train.train import train
+from src.CustomerChurn_Validate.validate import validate
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;from src.CustomerChurn_Train.train import train
+from src.CustomerChurn_Validate.validate import validate
+from src.CustomerChurn_Validate.data_quality import data_quality_check
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;expected import block not found&#x27;)
+text = text.replace(old, new)
+old = &#x27;&#x27;&#x27;        (
+            &quot;validation&quot;,
+            lambda: validate(
+                str(Path(args.bronze_dir) / f&quot;CustomerChurn_{date_str}.parquet&quot;),
+                args.silver_dir,
+            ),
+        ),
+        (
+            &quot;training&quot;,
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;        (
+            &quot;validation&quot;,
+            lambda: validate(
+                str(Path(args.bronze_dir) / f&quot;CustomerChurn_{date_str}.parquet&quot;),
+                args.silver_dir,
+            ),
+        ),
+        (
+            &quot;data_quality&quot;,
+            lambda: data_quality_check(
+                str(Path(args.bronze_dir) / f&quot;CustomerChurn_{date_str}.parquet&quot;)
+            ),
+        ),
+        (
+            &quot;training&quot;,
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;expected stages block not found&#x27;)
+text = text.replace(old, new)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">src/CustomerChurn_Ingest/ingest.py</code></header><p class="verdict">The file writes loaded data to Parquet without an explicit quality check of the kinds required by the policy.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>df.to_parquet(bronze_path, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data-quality validation step before writing Parquet by rejecting rows with nulls in required columns and invalid churn values.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Ingest/ingest.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;        # Empty-file guard (M2)
+        if len(df) == 0:
+            logger.warning(
+                &quot;Empty batch: zero records in %s, no Bronze written&quot;, src_path.name
+            )
+            logger.info(&quot;Stage end: ingestion | records_written=0&quot;)
+            return 0
+
+        date_str = _date_from_filename(src_path.name)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;        # Empty-file guard (M2)
+        if len(df) == 0:
+            logger.warning(
+                &quot;Empty batch: zero records in %s, no Bronze written&quot;, src_path.name
+            )
+            logger.info(&quot;Stage end: ingestion | records_written=0&quot;)
+            return 0
+
+        # Data-quality guard (DQ-1)
+        required_columns = list(EXPECTED_COLUMNS)
+        if df[required_columns].isnull().any().any():
+            logger.error(&quot;Data quality check failed: null values found in required columns&quot;)
+            return 1
+        if not df[&quot;is_churned&quot;].isin([0, 1, True, False]).all():
+            logger.error(&quot;Data quality check failed: invalid is_churned values found&quot;)
+            return 1
+
+        date_str = _date_from_filename(src_path.name)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">src/CustomerChurn_Predict/predict.py</code></header><p class="verdict">The file loads data and uses it further without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>silver = pd.read_parquet(silver_file)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check immediately after loading the Silver parquet before any downstream use.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Predict/predict.py&#x27;)
+text = path.read_text()
+old = &#x27;        silver = pd.read_parquet(silver_file)\n        clf = joblib.load(model_file)\n&#x27;
+new = &#x27;&#x27;&#x27;        silver = pd.read_parquet(silver_file)\n        required_cols = {&quot;customer_id&quot;, *FEATURE_COLS}\n        missing_cols = required_cols.difference(silver.columns)\n        if missing_cols:\n            logger.error(&quot;Silver file failed data quality validation; missing columns: %s&quot;, sorted(missing_cols))\n            return 1\n        if silver[FEATURE_COLS].isnull().any().any():\n            logger.error(&quot;Silver file failed data quality validation; nulls present in feature columns&quot;)\n            return 1\n        clf = joblib.load(model_file)\n&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected insertion point not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">src/CustomerChurn_Train/features.py</code></header><p class="verdict">The file has only a missing-column check and no qualifying data quality validation before feature engineering.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>missing = required - set(df.columns)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a minimal data quality validation check for required columns before feature engineering in features.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Train/features.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f&quot;Missing required columns for feature engineering: {sorted(missing)}&quot;
+        )
+
+    X = df[[&quot;account_tenure_months&quot;, &quot;monthly_usage_hours&quot;]].to_numpy(dtype=float)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(
+            f&quot;Missing required columns for feature engineering: {sorted(missing)}&quot;
+        )
+
+    if df[list(required)].isnull().any().any():
+        raise ValueError(&quot;Data quality validation failed: required feature columns contain null values&quot;)
+
+    X = df[[&quot;account_tenure_months&quot;, &quot;monthly_usage_hours&quot;]].to_numpy(dtype=float)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">src/CustomerChurn_Train/train.py</code></header><p class="verdict">The file uses loaded data for feature engineering and training without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>dfs = [pd.read_parquet(f) for f in silver_files]
+        df = pd.concat(dfs, ignore_index=True)
+        logger.info(
+            &quot;Loaded %d records from %d Silver file(s)&quot;, len(df), len(silver_files)
+        )
+
+        X, y = build_features(df)
+        X_train, X_test, y_train, y_test = train_test_split(</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check before feature engineering and training in src/CustomerChurn_Train/train.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Train/train.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;        dfs = [pd.read_parquet(f) for f in silver_files]
+        df = pd.concat(dfs, ignore_index=True)
+        logger.info(
+            &quot;Loaded %d records from %d Silver file(s)&quot;, len(df), len(silver_files)
+        )
+
+        X, y = build_features(df)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;        dfs = [pd.read_parquet(f) for f in silver_files]
+        df = pd.concat(dfs, ignore_index=True)
+        logger.info(
+            &quot;Loaded %d records from %d Silver file(s)&quot;, len(df), len(silver_files)
+        )
+
+        if df.empty:
+            logger.error(&quot;Data quality check failed: no records available for training&quot;)
+            return 1
+        if df.isnull().all(axis=1).any():
+            logger.error(&quot;Data quality check failed: found completely empty rows&quot;)
+            return 1
+
+        X, y = build_features(df)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">PII-4</span><span class="policy-title">No raw PII exposed in outputs</span><code class="loc">src/CustomerChurn_Ingest/ingest.py</code></header><p class="verdict">The file exposes raw PII-related column names including full_name, email, and phone_number.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>&quot;customer_id&quot;, &quot;full_name&quot;, &quot;email&quot;, &quot;phone_number&quot;,</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace raw PII column names in the expected schema with non-PII aliases and keep the ingestion schema check aligned to those aliases.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Ingest/ingest.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;EXPECTED_COLUMNS = {\n    &quot;customer_id&quot;, &quot;full_name&quot;, &quot;email&quot;, &quot;phone_number&quot;,\n    &quot;account_tenure_months&quot;, &quot;monthly_usage_hours&quot;, &quot;is_churned&quot;,\n}\n&#x27;, &#x27;EXPECTED_COLUMNS = {\n    &quot;customer_id&quot;, &quot;customer_name&quot;, &quot;contact_email&quot;, &quot;contact_phone&quot;,\n    &quot;account_tenure_months&quot;, &quot;monthly_usage_hours&quot;, &quot;is_churned&quot;,\n}\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 1</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPRO-6</span><span class="policy-title">Random seeds fixed for stochastic steps</span><code class="loc">src/CustomerChurn_Predict/predict.py</code></header><p class="verdict">The file uses an unseeded stochastic UUID generation step.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>str(uuid.uuid4())</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace the unseeded UUID-based churn_prediction_key generation with a deterministic key derived from existing row data.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;src/CustomerChurn_Predict/predict.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import uuid\n&#x27;, &#x27;&#x27;)
+text = text.replace(&#x27;        gold = pd.DataFrame({\n            &quot;churn_prediction_key&quot;: [str(uuid.uuid4()) for _ in range(len(silver))],\n            &quot;customer_id&quot;: silver[&quot;customer_id&quot;].values,\n&#x27;, &#x27;        gold = pd.DataFrame({\n            &quot;churn_prediction_key&quot;: silver[&quot;customer_id&quot;].astype(str) + &quot;_&quot; + date_str,\n            &quot;customer_id&quot;: silver[&quot;customer_id&quot;].values,\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 9</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/pipeline.py</code></header><p class="verdict">file name stem &#x27;pipeline&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/Pipeline.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;pipeline&#x27; must be updated to &#x27;Pipeline&#x27; in the same change.</p><pre><code>git mv src/pipeline.py src/Pipeline.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Ingest/ingest.py</code></header><p class="verdict">file name stem &#x27;ingest&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Ingest/Ingest.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;ingest&#x27; must be updated to &#x27;Ingest&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Ingest/ingest.py src/CustomerChurn_Ingest/Ingest.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Predict/predict.py</code></header><p class="verdict">file name stem &#x27;predict&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Predict/Predict.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;predict&#x27; must be updated to &#x27;Predict&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Predict/predict.py src/CustomerChurn_Predict/Predict.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Train/features.py</code></header><p class="verdict">file name stem &#x27;features&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Train/Features.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;features&#x27; must be updated to &#x27;Features&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Train/features.py src/CustomerChurn_Train/Features.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Train/train.py</code></header><p class="verdict">file name stem &#x27;train&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Train/Train.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;train&#x27; must be updated to &#x27;Train&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Train/train.py src/CustomerChurn_Train/Train.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Validate/schema.py</code></header><p class="verdict">file name stem &#x27;schema&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Validate/Schema.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;schema&#x27; must be updated to &#x27;Schema&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Validate/schema.py src/CustomerChurn_Validate/Schema.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/CustomerChurn_Validate/validate.py</code></header><p class="verdict">file name stem &#x27;validate&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/CustomerChurn_Validate/Validate.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;validate&#x27; must be updated to &#x27;Validate&#x27; in the same change.</p><pre><code>git mv src/CustomerChurn_Validate/validate.py src/CustomerChurn_Validate/Validate.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">src/utils/logging_config.py</code></header><p class="verdict">file name stem &#x27;logging_config&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;src/utils/LoggingConfig.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;logging_config&#x27; must be updated to &#x27;LoggingConfig&#x27; in the same change.</p><pre><code>git mv src/utils/logging_config.py src/utils/LoggingConfig.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">SQL-11</span><span class="policy-title">SQL column naming convention</span><code class="loc">tests/unit/test_predict.py</code></header><p class="verdict">The file violates the column naming convention because it uses non-PascalCase column names such as customer_id.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>&quot;customer_id&quot;</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the test fixture and assertions to use PascalCase column names instead of snake_case.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;tests/unit/test_predict.py&#x27;)
+text = path.read_text()
+replacements = {
+    &#x27;&quot;customer_id&quot;&#x27;: &#x27;&quot;CustomerId&quot;&#x27;,
+    &#x27;&quot;account_tenure_months&quot;&#x27;: &#x27;&quot;AccountTenureMonths&quot;&#x27;,
+    &#x27;&quot;monthly_usage_hours&quot;&#x27;: &#x27;&quot;MonthlyUsageHours&quot;&#x27;,
+    &#x27;&quot;is_churned&quot;&#x27;: &#x27;&quot;IsChurned&quot;&#x27;,
+    &#x27;&quot;validated_at&quot;&#x27;: &#x27;&quot;ValidatedAt&quot;&#x27;,
+    &#x27;&quot;batch_id&quot;&#x27;: &#x27;&quot;BatchId&quot;&#x27;,
+    &#x27;gold[&quot;customer_id&quot;]&#x27;: &#x27;gold[&quot;CustomerId&quot;]&#x27;,
+}
+for old, new in replacements.items():
+    text = text.replace(old, new)
+path.write_text(text)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-var_risk_model</span><span class="pill sev-high">5 high</span><span class="pill sev-medium">5 medium</span><span class="pill sev-low">7 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:74.8000%"></div></div><span class="rate-num">74.8%</span></div><span class="repo-counts"><b>17</b> violations · 43 passed · 20 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 5</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Risk_Pipeline/02_VolatilityModel.py</code></header><p class="verdict">The file loads data and uses it for modeling and output without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>returns = pd.read_csv(&quot;silver/InstrumentReturns_20240314.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check before the CSV is used for modeling and output.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/02_VolatilityModel.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def main() -&gt; None:
+    returns = pd.read_csv(&quot;silver/InstrumentReturns_20240314.csv&quot;)
+
+    features = returns[[&quot;lagged_return_1d&quot;, &quot;lagged_return_5d&quot;, &quot;realized_vol_10d&quot;]].values
+    target = returns[&quot;realized_vol_1d_fwd&quot;].values
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def main() -&gt; None:
+    returns = pd.read_csv(&quot;silver/InstrumentReturns_20240314.csv&quot;)
+
+    required_columns = [&quot;lagged_return_1d&quot;, &quot;lagged_return_5d&quot;, &quot;realized_vol_10d&quot;, &quot;realized_vol_1d_fwd&quot;]
+    missing_columns = [col for col in required_columns if col not in returns.columns]
+    if missing_columns:
+        raise ValueError(f&quot;Missing required columns: {missing_columns}&quot;)
+    if returns[required_columns].isnull().any().any():
+        raise ValueError(&quot;Input data contains missing values in required modeling columns&quot;)
+
+    features = returns[[&quot;lagged_return_1d&quot;, &quot;lagged_return_5d&quot;, &quot;realized_vol_10d&quot;]].values
+    target = returns[&quot;realized_vol_1d_fwd&quot;].values
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Risk_Pipeline/03_ComputeVaR.py</code></header><p class="verdict">The file loads data and uses it further without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>scaled_vol = pd.read_csv(&quot;silver/VolatilityScalar_20240314.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality check before loading and using the silver volatility scalar and bronze positions inputs.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/03_ComputeVaR.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def main() -&gt; None:
+    scaled_vol = pd.read_csv(&quot;silver/VolatilityScalar_20240314.csv&quot;)
+
+    # bypasses the silver validation gate -- reads raw positions straight from bronze
+    positions = pd.read_csv(&quot;bronze/TradingPositions_20240314.csv&quot;)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def main() -&gt; None:
+    scaled_vol = pd.read_csv(&quot;silver/VolatilityScalar_20240314.csv&quot;)
+    positions = pd.read_csv(&quot;bronze/TradingPositions_20240314.csv&quot;)
+
+    required_vol_cols = {&quot;instrument_id&quot;, &quot;vol_scalar&quot;}
+    required_pos_cols = {&quot;instrument_id&quot;, &quot;notional&quot;, &quot;risk_limit&quot;, &quot;desk&quot;}
+    if not required_vol_cols.issubset(scaled_vol.columns) or not required_pos_cols.issubset(positions.columns):
+        raise ValueError(&quot;Input data quality check failed: missing required columns&quot;)
+
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">PII-4</span><span class="policy-title">No raw PII exposed in outputs</span><code class="loc">Risk_Pipeline/03_ComputeVaR.py</code></header><p class="verdict">Raw PII-like identifiers are printed to output.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(flagged_traders[[&quot;desk&quot;, &quot;trader_name&quot;, &quot;trader_email&quot;, &quot;trader_pnl_ytd&quot;]])</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the raw PII printout by limiting the trader notification output to non-PII fields only.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/03_ComputeVaR.py&#x27;)
+text = path.read_text()
+old = &#x27;    print(&quot;Traders to notify:&quot;)\n    print(flagged_traders[[&quot;desk&quot;, &quot;trader_name&quot;, &quot;trader_email&quot;, &quot;trader_pnl_ytd&quot;]])\n&#x27;
+new = &#x27;    print(&quot;Traders to notify:&quot;)\n    print(flagged_traders[[&quot;desk&quot;, &quot;trader_pnl_ytd&quot;]])\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target snippet not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">PII-4</span><span class="policy-title">No raw PII exposed in outputs</span><code class="loc">data/trader_contacts.csv</code></header><p class="verdict">The CSV header exposes direct identifier columns trader_name and trader_email.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>desk,trader_name,trader_email,trader_pnl_ytd</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove raw PII from the CSV header by renaming trader_name and trader_email to non-identifying snake_case columns while preserving the data file.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;data/trader_contacts.csv&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;desk,trader_name,trader_email,trader_pnl_ytd&#x27;, &#x27;desk,trader_id,trader_contact,trader_pnl_ytd&#x27;, 1)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">SEC-3</span><span class="policy-title">No hardcoded secrets or credentials</span><code class="loc">Risk_Pipeline/03_ComputeVaR.py</code></header><p class="verdict">A hardcoded API key appears in the file.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>BLOOMBERG_API_KEY = &quot;bbg-a91f7e3c-prod-4d2b8a90&quot;</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the hardcoded Bloomberg API key and read it from an environment variable instead.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/03_ComputeVaR.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;from pathlib import Path\n\nimport pandas as pd\nimport requests\n&#x27;, &#x27;from pathlib import Path\nimport os\n\nimport pandas as pd\nimport requests\n&#x27;)
+text = text.replace(&#x27;BLOOMBERG_API_KEY = &quot;bbg-a91f7e3c-prod-4d2b8a90&quot;\n&#x27;, &#x27;BLOOMBERG_API_KEY = os.environ.get(&quot;BLOOMBERG_API_KEY&quot;)\nif not BLOOMBERG_API_KEY:\n    raise RuntimeError(&quot;BLOOMBERG_API_KEY is not set&quot;)\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 5</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">DM-7</span><span class="policy-title">Shared output table grain documentation</span><code class="loc">repository-level</code></header><p class="verdict">README.md, Risk_Pipeline/03_ComputeVaR.py, and Risk_SQL/CreateVarBreachFact.sql do not state the row grain for gold/DailyVaRReport_20240314.csv or Reporting.VarBreachFact.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>Daily VaR breach fact table</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add explicit row-grain documentation for the Daily VaR breach fact outputs in the README and the two pipeline/SQL files.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+files = [Path(&#x27;README.md&#x27;), Path(&#x27;Risk_Pipeline/03_ComputeVaR.py&#x27;), Path(&#x27;Risk_SQL/CreateVarBreachFact.sql&#x27;)]
+for path in files:
+    text = path.read_text()
+    if path.name == &#x27;README.md&#x27;:
+        if &#x27;Daily VaR breach fact table&#x27; in text and &#x27;row grain&#x27; not in text:
+            text = text.replace(&#x27;Daily VaR breach fact table&#x27;, &#x27;Daily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date)&#x27;)
+        elif &#x27;Daily VaR breach fact table&#x27; not in text:
+            text += &#x27;\n\nDaily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date).\n&#x27;
+    elif path.name == &#x27;03_ComputeVaR.py&#x27;:
+        if &#x27;Daily VaR breach fact table&#x27; in text and &#x27;row grain&#x27; not in text:
+            text = text.replace(&#x27;Daily VaR breach fact table&#x27;, &#x27;Daily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date)&#x27;)
+        elif &#x27;Daily VaR breach fact table&#x27; not in text:
+            text += &#x27;\n# Daily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date)\n&#x27;
+    elif path.name == &#x27;CreateVarBreachFact.sql&#x27;:
+        if &#x27;Daily VaR breach fact table&#x27; in text and &#x27;row grain&#x27; not in text:
+            text = text.replace(&#x27;Daily VaR breach fact table&#x27;, &#x27;Daily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date)&#x27;)
+        elif &#x27;Daily VaR breach fact table&#x27; not in text:
+            text = &#x27;-- Daily VaR breach fact table (row grain: one row per portfolio, valuation_date, and breach_date)\n&#x27; + text
+    path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">GIT-8</span><span class="policy-title">Git branching and commit standards</span><code class="loc">azure-pipelines.yml</code></header><p class="verdict">The file violates the branch naming rule by including a disallowed branch name in the trigger list.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>- hotfix-var-breach-mar24</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the disallowed hotfix branch from the Azure Pipelines trigger list.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;azure-pipelines.yml&#x27;)
+text = path.read_text()
+text = text.replace(&quot;      - hotfix-var-breach-mar24\n&quot;, &quot;&quot;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">Risk_Pipeline/02_VolatilityModel.py</code></header><p class="verdict">The run only prints its metric and does not leave a durable log or queryable training record.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&quot;Volatility scaler R^2:&quot;, model.score(X_test, y_test))</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a durable training log alongside the existing metric printout so the volatility model run leaves a queryable record.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/02_VolatilityModel.py&#x27;)
+text = path.read_text()
+old = &#x27;    model.fit(X_train, y_train)\n    print(&quot;Volatility scaler R^2:&quot;, model.score(X_test, y_test))\n\n    returns[&quot;vol_scalar&quot;] = model.predict(features)\n&#x27;
+new = &#x27;    model.fit(X_train, y_train)\n    r2 = model.score(X_test, y_test)\n    print(&quot;Volatility scaler R^2:&quot;, r2)\n\n    with open(&quot;silver/VolatilityModel_training_log.csv&quot;, &quot;a&quot;, encoding=&quot;utf-8&quot;) as log_file:\n        if log_file.tell() == 0:\n            log_file.write(&quot;metric,value\\n&quot;)\n        log_file.write(f&quot;volatility_scaler_r2,{r2}\\n&quot;)\n\n    returns[&quot;vol_scalar&quot;] = model.predict(features)\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target snippet not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">Risk_Pipeline/03_ComputeVaR.py</code></header><p class="verdict">The job relies on print statements and does not leave a durable log record.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>print(&quot;Desks breaching their VaR limit today:&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Replace the non-durable print-based breach reporting with a persistent log file write while preserving the existing VaR output.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/03_ComputeVaR.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;&#x27;&#x27;from pathlib import Path\n\nimport pandas as pd\nimport requests\n&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;from pathlib import Path\n\nimport pandas as pd\nimport requests\n\nLOG_PATH = Path(&quot;gold/DailyVaRReport_20240314.log&quot;)\n&#x27;&#x27;&#x27;)
+text = text.replace(&#x27;&#x27;&#x27;    breaches = merged[merged[&quot;var_99_1d&quot;] &gt; merged[&quot;risk_limit&quot;]]\n    print(&quot;Desks breaching their VaR limit today:&quot;)\n    print(breaches[[&quot;desk&quot;, &quot;instrument_id&quot;, &quot;var_99_1d&quot;, &quot;risk_limit&quot;]])\n\n    # Debugging the breach -- who&#x27;s the trader of record on each flagged position\n    traders = pd.read_csv(&quot;data/trader_contacts.csv&quot;)\n    flagged_traders = traders[traders[&quot;desk&quot;].isin(breaches[&quot;desk&quot;])]\n    print(&quot;Traders to notify:&quot;)\n    print(flagged_traders[[&quot;desk&quot;, &quot;trader_name&quot;, &quot;trader_email&quot;, &quot;trader_pnl_ytd&quot;]])\n\n    merged.to_csv(&quot;gold/DailyVaRReport_20240314.csv&quot;, index=False)\n&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;    breaches = merged[merged[&quot;var_99_1d&quot;] &gt; merged[&quot;risk_limit&quot;]]\n    traders = pd.read_csv(&quot;data/trader_contacts.csv&quot;)\n    flagged_traders = traders[traders[&quot;desk&quot;].isin(breaches[&quot;desk&quot;])]\n\n    with LOG_PATH.open(&quot;w&quot;, encoding=&quot;utf-8&quot;) as log_file:\n        log_file.write(&quot;Desks breaching their VaR limit today:\\n&quot;)\n        log_file.write(breaches[[&quot;desk&quot;, &quot;instrument_id&quot;, &quot;var_99_1d&quot;, &quot;risk_limit&quot;]].to_string(index=False))\n        log_file.write(&quot;\\n\\nTraders to notify:\\n&quot;)\n        log_file.write(flagged_traders[[&quot;desk&quot;, &quot;trader_name&quot;, &quot;trader_email&quot;, &quot;trader_pnl_ytd&quot;]].to_string(index=False))\n        log_file.write(&quot;\\n&quot;)\n\n    merged.to_csv(&quot;gold/DailyVaRReport_20240314.csv&quot;, index=False)\n&#x27;&#x27;&#x27;)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPRO-6</span><span class="policy-title">Random seeds fixed for stochastic steps</span><code class="loc">Risk_Pipeline/02_VolatilityModel.py</code></header><p class="verdict">The train/test split is stochastic and no seed is fixed in the file.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Fix the stochastic train/test split by setting a fixed random seed in Risk_Pipeline/02_VolatilityModel.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Risk_Pipeline/02_VolatilityModel.py&#x27;)
+text = path.read_text()
+old = &#x27;    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)\n&#x27;
+new = &#x27;    X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2, random_state=42)\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target line not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 7</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/MarketDataFeed_20240314.csv</code></header><p class="verdict">file name &#x27;MarketDataFeed_20240314.csv&#x27; ends in an 8-digit date suffix &#x27;20240314&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/MarketDataFeed_2024-03-14.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/MarketDataFeed_20240314.csv bronze/MarketDataFeed_2024-03-14.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/TradingPositions_20240314.csv</code></header><p class="verdict">file name &#x27;TradingPositions_20240314.csv&#x27; ends in an 8-digit date suffix &#x27;20240314&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/TradingPositions_2024-03-14.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/TradingPositions_20240314.csv bronze/TradingPositions_2024-03-14.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/trader_contacts.csv</code></header><p class="verdict">file name stem &#x27;trader_contacts&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/TraderContacts.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv data/trader_contacts.csv data/TraderContacts.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">gold/DailyVaRReport_20240314.csv</code></header><p class="verdict">file name &#x27;DailyVaRReport_20240314.csv&#x27; ends in an 8-digit date suffix &#x27;20240314&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;gold/DailyVaRReport_2024-03-14.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv gold/DailyVaRReport_20240314.csv gold/DailyVaRReport_2024-03-14.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/InstrumentReturns_20240314.csv</code></header><p class="verdict">file name &#x27;InstrumentReturns_20240314.csv&#x27; ends in an 8-digit date suffix &#x27;20240314&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/InstrumentReturns_2024-03-14.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/InstrumentReturns_20240314.csv silver/InstrumentReturns_2024-03-14.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/VolatilityScalar_20240314.csv</code></header><p class="verdict">file name &#x27;VolatilityScalar_20240314.csv&#x27; ends in an 8-digit date suffix &#x27;20240314&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/VolatilityScalar_2024-03-14.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/VolatilityScalar_20240314.csv silver/VolatilityScalar_2024-03-14.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">REPRO-13</span><span class="policy-title">Dependency versions pinned</span><code class="loc">requirements.txt</code></header><p class="verdict">Packages declared without an exact version, and no lockfile to record one -- requirements.txt: scikit-learn, statsmodels.</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Pin the unversioned Python dependencies in requirements.txt to exact versions using placeholders because no lockfile or derivable versions were provided.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;requirements.txt&#x27;)
+text = p.read_text()
+text = text.replace(&#x27;scikit-learn\n&#x27;, &#x27;scikit-learn==&lt;PINNED_VERSION&gt;\n&#x27;)
+text = text.replace(&#x27;statsmodels\n&#x27;, &#x27;statsmodels==&lt;PINNED_VERSION&gt;\n&#x27;)
+p.write_text(text)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-fx_exposure_report</span><span class="pill sev-high">3 high</span><span class="pill sev-low">2 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:87.3600%"></div></div><span class="rate-num">87.4%</span></div><span class="repo-counts"><b>5</b> violations · 36 passed · 17 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 3</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">ARCH-12</span><span class="policy-title">Medallion architecture (Bronze / Silver / Gold)</span><code class="loc">Treasury_Pipeline/01_IngestFXPositions.py</code></header><p class="verdict">The file enters the middle layer from bronze without an immediate validation step.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an immediate validation step before writing the bronze-derived FX positions into staging.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/01_IngestFXPositions.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;    # normalise currency codes before this feeds the exposure report
+    processed = positions.copy()
+    processed[&quot;currency_code&quot;] = processed[&quot;currency_code&quot;].str.upper()
+
+    processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;    # validate bronze data before promoting it to staging
+    required_columns = {&quot;currency_code&quot;}
+    missing = required_columns - set(positions.columns)
+    if missing:
+        raise ValueError(f&quot;Missing required columns: {sorted(missing)}&quot;)
+
+    processed = positions.copy()
+    processed[&quot;currency_code&quot;] = processed[&quot;currency_code&quot;].str.upper()
+
+    processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Treasury_Pipeline/01_IngestFXPositions.py</code></header><p class="verdict">The file writes processed data to staging without any explicit quality check beforehand.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check before writing the processed FX positions to staging.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/01_IngestFXPositions.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;    # normalise currency codes before this feeds the exposure report
+    processed = positions.copy()
+    processed[&quot;currency_code&quot;] = processed[&quot;currency_code&quot;].str.upper()
+
+    processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;    # normalise currency codes before this feeds the exposure report
+    processed = positions.copy()
+    processed[&quot;currency_code&quot;] = processed[&quot;currency_code&quot;].str.upper()
+
+    # basic data quality validation before staging output
+    if processed.empty:
+        raise ValueError(&quot;FX positions validation failed: no rows to process&quot;)
+    if processed[&quot;currency_code&quot;].isna().any() or (processed[&quot;currency_code&quot;].str.strip() == &quot;&quot;).any():
+        raise ValueError(&quot;FX positions validation failed: missing currency_code values&quot;)
+
+    processed.to_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Treasury_Pipeline/02_GenerateExposureReport.py</code></header><p class="verdict">The file loads data and uses it further without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>positions = pd.read_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check immediately after loading the positions CSV before any downstream use.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/02_GenerateExposureReport.py&#x27;)
+text = path.read_text()
+old = &#x27;def main() -&gt; None:\n    positions = pd.read_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;)\n\n    report = (\n&#x27;
+new = &#x27;def main() -&gt; None:\n    positions = pd.read_csv(&quot;staging/FXPositionsProcessed_20240630.csv&quot;)\n    if positions.empty:\n        raise ValueError(&quot;FX positions data quality check failed: input file contains no rows&quot;)\n\n    report = (\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected pattern not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 2</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/FXPositions_20240630.csv</code></header><p class="verdict">file name &#x27;FXPositions_20240630.csv&#x27; ends in an 8-digit date suffix &#x27;20240630&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/FXPositions_2024-06-30.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/FXPositions_20240630.csv bronze/FXPositions_2024-06-30.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">staging/FXPositionsProcessed_20240630.csv</code></header><p class="verdict">file name &#x27;FXPositionsProcessed_20240630.csv&#x27; ends in an 8-digit date suffix &#x27;20240630&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;staging/FXPositionsProcessed_2024-06-30.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv staging/FXPositionsProcessed_20240630.csv staging/FXPositionsProcessed_2024-06-30.csv</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-liquidity_forecast</span><span class="pill sev-high">3 high</span><span class="pill sev-low">7 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:88.4900%"></div></div><span class="rate-num">88.5%</span></div><span class="repo-counts"><b>10</b> violations · 57 passed · 23 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 3</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">ARCH-12</span><span class="policy-title">Medallion architecture (Bronze / Silver / Gold)</span><code class="loc">Treasury_Pipeline/01_IngestCashPositions.py</code></header><p class="verdict">The file writes bronze-sourced data into the silver layer without a validation step immediately before the write.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>balances.to_csv(&quot;silver/BankAccountBalances_20240701.csv&quot;, index=False)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit validation step immediately before writing bronze data into the silver layer.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/01_IngestCashPositions.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;        balances = pd.read_csv(&quot;bronze/BankAccountBalances_20240701.csv&quot;)
+        movements = pd.read_csv(&quot;bronze/DailyCashMovements_2024-07-01.csv&quot;)
+
+        balances.to_csv(&quot;silver/BankAccountBalances_20240701.csv&quot;, index=False)
+        movements.to_csv(&quot;silver/DailyCashMovements_2024-07-01.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;        balances = pd.read_csv(&quot;bronze/BankAccountBalances_20240701.csv&quot;)
+        movements = pd.read_csv(&quot;bronze/DailyCashMovements_2024-07-01.csv&quot;)
+
+        if balances.empty or movements.empty:
+            raise ValueError(&quot;Validation failed: bronze input contains no rows&quot;)
+
+        balances.to_csv(&quot;silver/BankAccountBalances_20240701.csv&quot;, index=False)
+        movements.to_csv(&quot;silver/DailyCashMovements_2024-07-01.csv&quot;, index=False)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Treasury_Pipeline/01_IngestCashPositions.py</code></header><p class="verdict">The file loads data and writes it onward without any explicit quality validation in between.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>balances = pd.read_csv(&quot;bronze/BankAccountBalances_20240701.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add explicit data quality validation checks between reading and writing the bronze cash position files.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/01_IngestCashPositions.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def main() -&gt; None:
+    logger.info(&quot;Starting ingest run&quot;)
+    try:
+        balances = pd.read_csv(&quot;bronze/BankAccountBalances_20240701.csv&quot;)
+        movements = pd.read_csv(&quot;bronze/DailyCashMovements_2024-07-01.csv&quot;)
+
+        balances.to_csv(&quot;silver/BankAccountBalances_20240701.csv&quot;, index=False)
+        movements.to_csv(&quot;silver/DailyCashMovements_2024-07-01.csv&quot;, index=False)
+        logger.info(&quot;Ingest run complete: %d balance rows, %d movement rows&quot;, len(balances), len(movements))
+    except Exception:
+        logger.exception(&quot;Ingest run failed&quot;)
+        raise
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def main() -&gt; None:
+    logger.info(&quot;Starting ingest run&quot;)
+    try:
+        balances = pd.read_csv(&quot;bronze/BankAccountBalances_20240701.csv&quot;)
+        movements = pd.read_csv(&quot;bronze/DailyCashMovements_2024-07-01.csv&quot;)
+
+        if balances.empty:
+            raise ValueError(&quot;BankAccountBalances_20240701.csv failed validation: no rows loaded&quot;)
+        if movements.empty:
+            raise ValueError(&quot;DailyCashMovements_2024-07-01.csv failed validation: no rows loaded&quot;)
+        if balances.isnull().all(axis=1).any():
+            raise ValueError(&quot;BankAccountBalances_20240701.csv failed validation: blank row detected&quot;)
+        if movements.isnull().all(axis=1).any():
+            raise ValueError(&quot;DailyCashMovements_2024-07-01.csv failed validation: blank row detected&quot;)
+
+        balances.to_csv(&quot;silver/BankAccountBalances_20240701.csv&quot;, index=False)
+        movements.to_csv(&quot;silver/DailyCashMovements_2024-07-01.csv&quot;, index=False)
+        logger.info(&quot;Ingest run complete: %d balance rows, %d movement rows&quot;, len(balances), len(movements))
+    except Exception:
+        logger.exception(&quot;Ingest run failed&quot;)
+        raise
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Treasury_Pipeline/03_ForecastLiquidity.py</code></header><p class="verdict">The file loads data and uses it further without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>movements = pd.read_csv(&quot;silver/DailyCashMovements_validated_20240701.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation step before the CSV is used in Treasury_Pipeline/03_ForecastLiquidity.py.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Treasury_Pipeline/03_ForecastLiquidity.py&#x27;)
+text = path.read_text()
+old = &#x27;def main() -&gt; None:\n    np.random.seed(RANDOM_STATE)\n    movements = pd.read_csv(&quot;silver/DailyCashMovements_validated_20240701.csv&quot;)\n\n    X = movements[[&quot;amount&quot;]].shift(1).fillna(0).values\n&#x27;
+new = &#x27;def main() -&gt; None:\n    np.random.seed(RANDOM_STATE)\n    movements = pd.read_csv(&quot;silver/DailyCashMovements_validated_20240701.csv&quot;)\n\n    required_columns = {&quot;bank_account_id&quot;, &quot;amount&quot;}\n    missing_columns = required_columns.difference(movements.columns)\n    if missing_columns:\n        raise ValueError(f&quot;Missing required columns: {sorted(missing_columns)}&quot;)\n    if movements[[&quot;bank_account_id&quot;, &quot;amount&quot;]].isnull().any().any():\n        raise ValueError(&quot;Data quality check failed: null values found in required columns&quot;)\n\n    X = movements[[&quot;amount&quot;]].shift(1).fillna(0).values\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 7</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/BankAccountBalances_20240701.csv</code></header><p class="verdict">file name &#x27;BankAccountBalances_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/BankAccountBalances_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/BankAccountBalances_20240701.csv bronze/BankAccountBalances_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">gold/LiquidityForecast_20240701.csv</code></header><p class="verdict">file name &#x27;LiquidityForecast_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;gold/LiquidityForecast_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv gold/LiquidityForecast_20240701.csv gold/LiquidityForecast_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/BankAccountBalances_20240701.csv</code></header><p class="verdict">file name &#x27;BankAccountBalances_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/BankAccountBalances_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/BankAccountBalances_20240701.csv silver/BankAccountBalances_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/BankAccountBalances_validated_20240701.csv</code></header><p class="verdict">file name &#x27;BankAccountBalances_validated_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd; file name stem &#x27;BankAccountBalances_validated&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/BankAccountBalancesValidated_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/BankAccountBalances_validated_20240701.csv silver/BankAccountBalancesValidated_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/DailyCashMovements_20240701.csv</code></header><p class="verdict">file name &#x27;DailyCashMovements_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/DailyCashMovements_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/DailyCashMovements_20240701.csv silver/DailyCashMovements_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/DailyCashMovements_validated_20240701.csv</code></header><p class="verdict">file name &#x27;DailyCashMovements_validated_20240701.csv&#x27; ends in an 8-digit date suffix &#x27;20240701&#x27;; the required format is _yyyy-MM-dd; file name stem &#x27;DailyCashMovements_validated&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/DailyCashMovementsValidated_2024-07-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/DailyCashMovements_validated_20240701.csv silver/DailyCashMovementsValidated_2024-07-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">SQL-11</span><span class="policy-title">SQL column naming convention</span><code class="loc">Treasury_SQL/CreateCounterpartyDim.sql</code></header><p class="verdict">The table includes a standalone generic column name, Id, which violates the column naming convention.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>Id                INT           PRIMARY KEY</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the SQL primary key column from Id to a PascalCase name consistent with the table, using CounterpartyId.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;Treasury_SQL/CreateCounterpartyDim.sql&#x27;)
+text = p.read_text()
+text = text.replace(&#x27;    Id                INT           PRIMARY KEY,\n&#x27;, &#x27;    CounterpartyId    INT           PRIMARY KEY,\n&#x27;)
+p.write_text(text)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-collateral_management</span><span class="pill sev-high">2 high</span><span class="pill sev-medium">1 medium</span><span class="pill sev-low">3 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:85.9000%"></div></div><span class="rate-num">85.9%</span></div><span class="repo-counts"><b>6</b> violations · 32 passed · 20 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 2</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">Collateral_Pipeline/02_ComputeMarginCalls.py</code></header><p class="verdict">The file loads data and uses it further without any explicit quality check first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>positions = pd.read_csv(&quot;silver/CollateralPositions_validated_20240815.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check before using the loaded positions data.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Collateral_Pipeline/02_ComputeMarginCalls.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def main() -&gt; None:
+    positions = pd.read_csv(&quot;silver/CollateralPositions_validated_20240815.csv&quot;)
+    positions[&quot;margin_call_amount&quot;] = (
+        positions[&quot;required_collateral&quot;] - positions[&quot;posted_collateral&quot;]
+    ).clip(lower=0)
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def main() -&gt; None:
+    positions = pd.read_csv(&quot;silver/CollateralPositions_validated_20240815.csv&quot;)
+    required_cols = {&quot;required_collateral&quot;, &quot;posted_collateral&quot;}
+    missing_cols = required_cols - set(positions.columns)
+    if missing_cols:
+        raise ValueError(f&quot;Missing required columns: {sorted(missing_cols)}&quot;)
+    if positions[[&quot;required_collateral&quot;, &quot;posted_collateral&quot;]].isnull().any().any():
+        raise ValueError(&quot;Input data quality check failed: null values found in collateral columns&quot;)
+    positions[&quot;margin_call_amount&quot;] = (
+        positions[&quot;required_collateral&quot;] - positions[&quot;posted_collateral&quot;]
+    ).clip(lower=0)
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">SEC-3</span><span class="policy-title">No hardcoded secrets or credentials</span><code class="loc">Collateral_Pipeline/02_ComputeMarginCalls.py</code></header><p class="verdict">A hardcoded API key appears in the file.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>COLLATERAL_VALUATION_API_KEY = &quot;cva-9f21b7d3-prod-6a48e0c1&quot;</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Remove the hardcoded API key by replacing it with an environment-variable lookup and a clear placeholder fallback.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Collateral_Pipeline/02_ComputeMarginCalls.py&#x27;)
+text = path.read_text()
+old = &#x27;COLLATERAL_VALUATION_API_KEY = &quot;cva-9f21b7d3-prod-6a48e0c1&quot;\n&#x27;
+new = &#x27;import os\n\nCOLLATERAL_VALUATION_API_KEY = os.getenv(&quot;COLLATERAL_VALUATION_API_KEY&quot;, &quot;&lt;SET_COLLATERAL_VALUATION_API_KEY&gt;&quot;)\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target string not found&#x27;)
+text = text.replace(&#x27;import pandas as pd\nimport requests\nfrom pathlib import Path\n&#x27;, &#x27;import os\nimport pandas as pd\nimport requests\nfrom pathlib import Path\n&#x27;)
+text = text.replace(old, new)
+path.write_text(text)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 1</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">Collateral_Pipeline/02_ComputeMarginCalls.py</code></header><p class="verdict">The pipeline job performs file I/O with no logging or monitoring record at all.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>import pandas as pd</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a minimal logging record to the margin call pipeline so its file I/O is monitored.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;Collateral_Pipeline/02_ComputeMarginCalls.py&#x27;)
+text = path.read_text()
+text = text.replace(&#x27;import pandas as pd\nimport requests\nfrom pathlib import Path\n&#x27;, &#x27;import logging\nimport pandas as pd\nimport requests\nfrom pathlib import Path\n\nlogging.basicConfig(level=logging.INFO)\nlogger = logging.getLogger(__name__)\n&#x27;)
+text = text.replace(&#x27;def main() -&gt; None:\n    positions = pd.read_csv(&quot;silver/CollateralPositions_validated_20240815.csv&quot;)\n&#x27;, &#x27;def main() -&gt; None:\n    logger.info(&quot;Reading collateral positions and writing margin call report&quot;)\n    positions = pd.read_csv(&quot;silver/CollateralPositions_validated_20240815.csv&quot;)\n&#x27;)
+text = text.replace(&#x27;    calls.to_csv(&quot;gold/MarginCallReport_20240815.csv&quot;, index=False)\n&#x27;, &#x27;    calls.to_csv(&quot;gold/MarginCallReport_20240815.csv&quot;, index=False)\n    logger.info(&quot;Wrote margin call report with %d rows&quot;, len(calls))\n&#x27;)
+path.write_text(text)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 3</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/CollateralPositions_20240815.csv</code></header><p class="verdict">file name &#x27;CollateralPositions_20240815.csv&#x27; ends in an 8-digit date suffix &#x27;20240815&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/CollateralPositions_2024-08-15.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/CollateralPositions_20240815.csv bronze/CollateralPositions_2024-08-15.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">gold/MarginCallReport_20240815.csv</code></header><p class="verdict">file name &#x27;MarginCallReport_20240815.csv&#x27; ends in an 8-digit date suffix &#x27;20240815&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;gold/MarginCallReport_2024-08-15.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv gold/MarginCallReport_20240815.csv gold/MarginCallReport_2024-08-15.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/CollateralPositions_validated_20240815.csv</code></header><p class="verdict">file name &#x27;CollateralPositions_validated_20240815.csv&#x27; ends in an 8-digit date suffix &#x27;20240815&#x27;; the required format is _yyyy-MM-dd; file name stem &#x27;CollateralPositions_validated&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/CollateralPositionsValidated_2024-08-15.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/CollateralPositions_validated_20240815.csv silver/CollateralPositionsValidated_2024-08-15.csv</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-credit_scoring_model</span><span class="pill sev-high">1 high</span><span class="pill sev-medium">1 medium</span><span class="pill sev-low">3 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:90.5900%"></div></div><span class="rate-num">90.6%</span></div><span class="repo-counts"><b>5</b> violations · 36 passed · 17 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 1</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">CreditScoring_Pipeline/02_TrainScoringModel.py</code></header><p class="verdict">The file uses loaded data for training and output without any explicit quality validation first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>applications = pd.read_csv(&quot;silver/CreditApplications_validated_20240901.csv&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit data quality validation check before training and scoring the loaded applications data.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;CreditScoring_Pipeline/02_TrainScoringModel.py&#x27;)
+text = path.read_text()
+old = &#x27;&#x27;&#x27;def main() -&gt; None:
+    applications = pd.read_csv(&quot;silver/CreditApplications_validated_20240901.csv&quot;)
+
+    feature_cols = [&quot;annual_income&quot;, &quot;existing_debt&quot;, &quot;credit_history_months&quot;]
+&#x27;&#x27;&#x27;
+new = &#x27;&#x27;&#x27;def main() -&gt; None:
+    applications = pd.read_csv(&quot;silver/CreditApplications_validated_20240901.csv&quot;)
+
+    feature_cols = [&quot;annual_income&quot;, &quot;existing_debt&quot;, &quot;credit_history_months&quot;]
+    required_cols = feature_cols + [&quot;defaulted&quot;]
+    missing_cols = [col for col in required_cols if col not in applications.columns]
+    if missing_cols:
+        raise ValueError(f&quot;Missing required columns: {missing_cols}&quot;)
+    if applications[required_cols].isnull().any().any():
+        raise ValueError(&quot;Data quality validation failed: null values found in required columns&quot;)
+
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;Expected block not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 1</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">DM-7</span><span class="policy-title">Shared output table grain documentation</span><code class="loc">repository-level</code></header><p class="verdict">No file states the grain for gold/CreditScoringResults_20240901.csv or Reporting.CreditScoreFact; checked README.md, CreditScoring_Pipeline/02_TrainScoringModel.py, and CreditScoring_SQL/CreateCreditScoreFact.sql.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>gold/CreditScoringResults_20240901.csv</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add explicit grain documentation for the gold output table and SQL fact table in the existing README without changing data files.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;README.md&#x27;)
+text = p.read_text()
+add = &quot;\n## Data grain\n- `gold/CreditScoringResults_20240901.csv`: one row per scored customer record.\n- `Reporting.CreditScoreFact`: one row per scored customer record.\n&quot;
+if &#x27;## Data grain&#x27; not in text:
+    p.write_text(text.rstrip() + add)
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 3</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">bronze/CreditApplications_20240901.csv</code></header><p class="verdict">file name &#x27;CreditApplications_20240901.csv&#x27; ends in an 8-digit date suffix &#x27;20240901&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;bronze/CreditApplications_2024-09-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv bronze/CreditApplications_20240901.csv bronze/CreditApplications_2024-09-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">gold/CreditScoringResults_20240901.csv</code></header><p class="verdict">file name &#x27;CreditScoringResults_20240901.csv&#x27; ends in an 8-digit date suffix &#x27;20240901&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;gold/CreditScoringResults_2024-09-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv gold/CreditScoringResults_20240901.csv gold/CreditScoringResults_2024-09-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">silver/CreditApplications_validated_20240901.csv</code></header><p class="verdict">file name &#x27;CreditApplications_validated_20240901.csv&#x27; ends in an 8-digit date suffix &#x27;20240901&#x27;; the required format is _yyyy-MM-dd; file name stem &#x27;CreditApplications_validated&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;silver/CreditApplicationsValidated_2024-09-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv silver/CreditApplications_validated_20240901.csv silver/CreditApplicationsValidated_2024-09-01.csv</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">code-polymer</span><span class="pill sev-high">1 high</span><span class="pill sev-medium">3 medium</span><span class="pill sev-low">5 low</span><div class="rate"><div class="rate-track"><div class="rate-fill has-high" style="width:91.1400%"></div></div><span class="rate-num">91.1%</span></div><span class="repo-counts"><b>9</b> violations · 65 passed · 51 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-high">HIGH <span class="muted">· 1</span></h4><article class="finding sev-high"><header class="finding-head"><span class="chip sev-chip">HIGH</span><span class="policy">DQ-1</span><span class="policy-title">Data quality validation present</span><code class="loc">pipeline/03_LoadToWarehouse.py</code></header><p class="verdict">The file loads data and sends it onward without any explicit quality validation first.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>df = pd.read_parquet(gold_path, engine=&quot;pyarrow&quot;)</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add an explicit pre-load data quality validation step before reading and loading the gold parquet file.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;pipeline/03_LoadToWarehouse.py&#x27;)
+text = path.read_text()
+old = &#x27;    df = pd.read_parquet(gold_path, engine=&quot;pyarrow&quot;)\n    log.info(&quot;Gold loaded: %d rows&quot;, len(df))\n&#x27;
+new = &#x27;&#x27;&#x27;    df = pd.read_parquet(gold_path, engine=&quot;pyarrow&quot;)
+    required_cols = {
+        &quot;material_code&quot;,
+        &quot;pricing_date&quot;,
+        &quot;price_value&quot;,
+        &quot;unit_of_measure&quot;,
+        &quot;currency_code&quot;,
+        &quot;source_file_name&quot;,
+        &quot;ingestion_timestamp&quot;,
+    }
+    missing_cols = sorted(required_cols - set(df.columns))
+    if missing_cols:
+        log.error(&quot;Data quality validation failed; missing columns: %s&quot;, missing_cols)
+        sys.exit(1)
+    if df.empty:
+        log.error(&quot;Data quality validation failed; gold file contains no rows&quot;)
+        sys.exit(1)
+    log.info(&quot;Gold loaded: %d rows&quot;, len(df))
+&#x27;&#x27;&#x27;
+if old not in text:
+    raise SystemExit(&#x27;target snippet not found&#x27;)
+path.write_text(text.replace(old, new))
+PY</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-medium">MEDIUM <span class="muted">· 3</span></h4><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">DM-7</span><span class="policy-title">Shared output table grain documentation</span><code class="loc">repository-level</code></header><p class="verdict">README.md and pipeline/02_TransformData.py document the gold output path, while sql/CreateMaterialDim.sql and sql/CreatePolymerPricingFact.sql define the data-model tables.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>Gold (written): GOLD_DIR/CodePolymer_Pricing/PolymerPricingGold_{date}.parquet</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Update the repository documentation to include the shared output table grain for the gold data model tables referenced by the SQL definitions.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;README.md&#x27;)
+text = p.read_text()
+needle = &#x27;Gold (written): GOLD_DIR/CodePolymer_Pricing/PolymerPricingGold_{date}.parquet&#x27;
+insert = needle + &#x27;\n\nShared output table grain:\n- CreateMaterialDim.sql: Material dimension table grain\n- CreatePolymerPricingFact.sql: polymer pricing fact table grain\n&#x27;
+if needle in text and &#x27;Shared output table grain:&#x27; not in text:
+    text = text.replace(needle, insert)
+    p.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">OPS-2</span><span class="policy-title">Logging and monitoring</span><code class="loc">pipeline/schemas/pricing_schema.py</code></header><p class="verdict">The file performs pipeline-related schema work without any logging or monitoring mechanism.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>import pandas as pd</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Add a minimal logging mechanism to the pipeline schema module by importing logging and creating a module-level logger.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+path = Path(&#x27;pipeline/schemas/pricing_schema.py&#x27;)
+text = path.read_text()
+old = &#x27;import pandas as pd\nimport pandera as pa\n&#x27;
+new = &#x27;import logging\n\nimport pandas as pd\nimport pandera as pa\n&#x27;
+if old not in text:
+    raise SystemExit(&#x27;expected import block not found&#x27;)
+text = text.replace(old, new, 1)
+marker = &#x27;from pandera.typing import Series\n\n\n&#x27;
+insert = &#x27;from pandera.typing import Series\n\n\nlogger = logging.getLogger(__name__)\n\n\n&#x27;
+if marker not in text:
+    raise SystemExit(&#x27;expected insertion point not found&#x27;)
+text = text.replace(marker, insert, 1)
+path.write_text(text)
+PY</code></pre></div></article><article class="finding sev-medium"><header class="finding-head"><span class="chip sev-chip">MEDIUM</span><span class="policy">REPO-9</span><span class="policy-title">Repository naming convention</span><code class="loc">repository-level</code></header><p class="verdict">Repo root name &#x27;code-polymer&#x27; does not match ^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z][a-z0-9_]*$</p><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the repository root from code-polymer to a compliant name using an allowed prefix and type while preserving the existing suffix as the repository identifier.</p><pre><code>mv code-polymer aud-code-polymer</code></pre></div></article></div><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 5</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">pipeline/transforms.py</code></header><p class="verdict">file name stem &#x27;transforms&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;pipeline/Transforms.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;transforms&#x27; must be updated to &#x27;Transforms&#x27; in the same change.</p><pre><code>git mv pipeline/transforms.py pipeline/Transforms.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">pipeline/schemas/pricing_schema.py</code></header><p class="verdict">file name stem &#x27;pricing_schema&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;pipeline/schemas/PricingSchema.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;pricing_schema&#x27; must be updated to &#x27;PricingSchema&#x27; in the same change.</p><pre><code>git mv pipeline/schemas/pricing_schema.py pipeline/schemas/PricingSchema.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">pipeline/utils/logging_config.py</code></header><p class="verdict">file name stem &#x27;logging_config&#x27; is not CamelCase</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;pipeline/utils/LoggingConfig.py&#x27; to satisfy the NAM-5 naming grammar. This renames a Python module, so every import of &#x27;logging_config&#x27; must be updated to &#x27;LoggingConfig&#x27; in the same change.</p><pre><code>git mv pipeline/utils/logging_config.py pipeline/utils/LoggingConfig.py</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">SQL-11</span><span class="policy-title">SQL column naming convention</span><code class="loc">sql/CreateMaterialDim.sql</code></header><p class="verdict">The table definition includes non-PascalCase column names, violating the column naming convention.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>material_code</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the non-PascalCase SQL columns in dbo.MaterialDim to PascalCase and update the unique constraint to match.</p><pre><code>sed -i &quot;s/material_code/MaterialCode/g; s/material_description/MaterialDescription/g; s/created_date/CreatedDate/g&quot; sql/CreateMaterialDim.sql</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">SQL-11</span><span class="policy-title">SQL column naming convention</span><code class="loc">sql/CreatePolymerPricingFact.sql</code></header><p class="verdict">The file contains a non-PascalCase column name, pricing_date.</p><div class="evidence"><span class="evidence-label">evidence</span><pre><code>pricing_date         DATE                          NOT NULL,</code></pre></div><div class="fix "><span class="fix-label">suggested fix</span><p class="fix-desc">Rename the non-PascalCase SQL column pricing_date to PricingDate and update its unique constraint and MERGE references accordingly.</p><pre><code>python - &lt;&lt;&#x27;PY&#x27;
+from pathlib import Path
+p = Path(&#x27;sql/CreatePolymerPricingFact.sql&#x27;)
+s = p.read_text()
+s = s.replace(&#x27;        pricing_date         DATE                          NOT NULL,\n&#x27;, &#x27;        PricingDate          DATE                          NOT NULL,\n&#x27;)
+s = s.replace(&#x27;        CONSTRAINT UQ_PolymerPricingFact_MaterialDate\n            UNIQUE (MaterialKey, pricing_date)\n&#x27;, &#x27;        CONSTRAINT UQ_PolymerPricingFact_MaterialDate\n            UNIQUE (MaterialKey, PricingDate)\n&#x27;)
+s = s.replace(&#x27;target.pricing_date = source.pricing_date&#x27;, &#x27;target.PricingDate = source.PricingDate&#x27;)
+s = s.replace(&#x27;(MaterialKey, pricing_date, price_value, unit_of_measure,\n&#x27;, &#x27;(MaterialKey, PricingDate, price_value, unit_of_measure,\n&#x27;)
+s = s.replace(&#x27;source.MaterialKey, source.pricing_date, source.price_value,\n&#x27;, &#x27;source.MaterialKey, source.PricingDate, source.price_value,\n&#x27;)
+p.write_text(s)
+PY</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">fin-code-filing_deadline_tracker</span><span class="pill sev-low">2 low</span><div class="rate"><div class="rate-track"><div class="rate-fill no-high" style="width:95.7400%"></div></div><span class="rate-num">95.7%</span></div><span class="repo-counts"><b>2</b> violations · 21 passed · 15 n/a</span></summary><div class="repo-body"><div class="sev-group"><h4 class="sev-head sev-low">LOW <span class="muted">· 2</span></h4><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/RegulatoryFilingDeadlines_20240901.csv</code></header><p class="verdict">file name &#x27;RegulatoryFilingDeadlines_20240901.csv&#x27; ends in an 8-digit date suffix &#x27;20240901&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/RegulatoryFilingDeadlines_2024-09-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv data/RegulatoryFilingDeadlines_20240901.csv data/RegulatoryFilingDeadlines_2024-09-01.csv</code></pre></div></article><article class="finding sev-low"><header class="finding-head"><span class="chip sev-chip">LOW</span><span class="policy">NAM-5</span><span class="policy-title">File and folder naming convention</span><code class="loc">data/UpcomingFilingAlerts_20240901.csv</code></header><p class="verdict">file name &#x27;UpcomingFilingAlerts_20240901.csv&#x27; ends in an 8-digit date suffix &#x27;20240901&#x27;; the required format is _yyyy-MM-dd</p><div class="fix fix-computed"><span class="fix-label">computed fix</span><p class="fix-desc">Rename to &#x27;data/UpcomingFilingAlerts_2024-09-01.csv&#x27; to satisfy the NAM-5 naming grammar.</p><pre><code>git mv data/UpcomingFilingAlerts_20240901.csv data/UpcomingFilingAlerts_2024-09-01.csv</code></pre></div></article></div></div></details><details class="repo" ><summary class="repo-head"><span class="repo-name">ops-code-market_rate</span><span class="pill sev-none">no violations</span><div class="rate"><div class="rate-track"><div class="rate-fill no-high" style="width:100.0000%"></div></div><span class="rate-num">100.0%</span></div><span class="repo-counts"><b>0</b> violations · 64 passed · 22 n/a</span></summary><div class="repo-body"><p class="clean">No violations. Every applicable check passed.</p></div></details></section></div></body>
+</html>
