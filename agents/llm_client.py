@@ -1,15 +1,15 @@
-"""OpenAI client construction and the single chokepoint every model call goes through.
+"""Azure OpenAI client construction, and the one call every model request uses.
 
-Every request in the pipeline is routed through `chat_json` so the settings that
-control run-to-run reproducibility are declared in exactly one place. Setting
-them per-call site is how they drift apart.
+Routing every request through `chat_json` keeps the reproducibility settings in
+one place instead of drifting across call sites.
 
-`temperature=0` alone is NOT determinism: on a batched, mixture-of-experts
-backend, greedy decoding still varies with how requests are grouped. `seed` asks
-the backend for a reproducible sample, and `system_fingerprint` reports which
-backend configuration served it -- if the fingerprint changes between runs, the
-model moved underneath us and output differences are expected rather than a bug
-in our prompting.
+`temperature=0` alone is not determinism: on a batched backend, greedy decoding
+still varies with how requests are grouped. `seed` asks for a reproducible
+sample, and `system_fingerprint` records which backend served it -- so if the
+fingerprint changes between runs, the model moved underneath us and the output
+differences are not a bug in our prompts.
+
+See docs/ARCHITECTURE.md for the full reproducibility contract.
 """
 
 import json
@@ -22,7 +22,7 @@ REQUEST_SEED = 20240101
 REQUEST_TEMPERATURE = 0
 
 
-def get_client() -> OpenAI:
+def get_client() -> AzureOpenAI:
     return AzureOpenAI(
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
@@ -38,15 +38,13 @@ def chat_json(
     seed: int | None = None,
     temperature: float | None = None,
 ) -> dict:
-    """Issue one JSON-mode completion under the fixed determinism settings.
+    """One JSON-mode completion under the fixed determinism settings.
 
-    `seed` and `temperature` are overridable for self-consistency sampling,
-    which needs several *different* samples of the same prompt. That is not a
-    hole in the determinism contract: the sampler varies the seed over a fixed,
-    known sequence, so the set of samples is itself reproducible.
+    `seed` and `temperature` are overridable for self-consistency sampling, which
+    needs several *different* samples of one prompt. The sampler walks a fixed
+    seed sequence, so the set of samples stays reproducible.
 
-    Appends the response's system_fingerprint to `fingerprints` when supplied,
-    so the caller can record which backend served the run.
+    Appends the response's system_fingerprint to `fingerprints` when supplied.
     """
     response = client.chat.completions.create(
         model=os.environ["AZURE_OPENAI_DEPLOYMENT"],

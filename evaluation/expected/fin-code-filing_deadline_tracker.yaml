@@ -4,9 +4,6 @@
 # model training, and no tiered storage. Its purpose is to check that policies
 # which genuinely do not apply return NOT_APPLICABLE instead of being
 # force-fit into a compliance verdict.
-#
-# Almost everything here is expect_clean, so this file is a precision signal:
-# a tool that flags a clean utility script will not be trusted on a real one.
 
 repo: fin-code-filing_deadline_tracker
 
@@ -15,24 +12,17 @@ expect_violations:
   - {policy: NAM-5, file: data/UpcomingFilingAlerts_20240901.csv, note: 8-digit date suffix}
 
 expect_clean:
-  # no data lake, no medallion layers -- ARCH-12 must not be force-fit
   - {policy: ARCH-12, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: no tiered storage anywhere}
-  # repo-level: no gold layer and no Dim/Fact table anywhere, so DM-7 is
-  # NOT_APPLICABLE -- the case that proves it isn't force-fit
   - {policy: DM-7, file: null, note: no gold output and no Dim/Fact table; must return NOT_APPLICABLE}
-  # validation is present
   - {policy: DQ-1, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: asserts on null deadline_date and duplicate filing_id}
   - {policy: OPS-2, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: logging configured to logs/deadline_check.log}
-  # no randomness at all
   - {policy: REPRO-6, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: no stochastic operations}
   - {policy: REPRO-13, file: requirements.txt, note: both packages pinned}
   - {policy: SEC-3, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: no credentials}
   - {policy: NAM-5, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: 01_ stage prefix}
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
-  # no SQL in this repo at all
   - {policy: SQL-10, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: no SQL object definitions}
   - {policy: SQL-11, file: data/RegulatoryFilingDeadlines_20240901.csv, note: a CSV header is not a SQL column definition}
-  # jurisdiction and filing id are not direct identifiers
   - {policy: PII-4, file: data/RegulatoryFilingDeadlines_20240901.csv, note: filing id and jurisdiction, no direct identifiers}
   - {policy: PII-4, file: FilingTracker_Pipeline/01_CheckUpcomingDeadlines.py, note: logs a count only, never row content}
 

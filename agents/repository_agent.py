@@ -11,15 +11,8 @@ from pathlib import Path
 
 from agents.schemas import FileRecord, FileType, RepositorySnapshot
 
-# Directories holding generated output, vendored dependencies, or tool state.
-# Auditing them is money spent on artifacts nobody wrote: a .NET repo's bin/ and
-# obj/ alone can outnumber its source files, and every file here would be an LLM
-# call. The .NET and JVM entries matter because Azure DevOps shops are commonly
-# .NET, and the original list only covered Python and Node.
-#
-# The tradeoff is real: a repository that genuinely keeps source in build/ or
-# bin/ would be under-audited. That is the rarer mistake, and it is visible in
-# the report's file count, whereas an inflated bill is not.
+# Generated output, vendored dependencies, and tool state; artifacts nobody
+# wrote, each costing an LLM call. 
 SKIP_DIRS = {
     # version control and editor/tool state
     ".git", ".idea", ".vscode", ".vs", ".specify", ".claude",
@@ -34,21 +27,8 @@ SKIP_DIRS = {
     "dist", "build", ".terraform", "mlruns",
 }
 
-# Paths excluded by position rather than by directory name, matched against the
-# repo-relative path.
-#
-# Spec-driven-development scaffolding: the specification of what to build, and
-# the agent definitions that built it. Governance policies apply to the pipeline
-# that runs in production, not to the documents describing it -- a naming rule
-# about dataset files says nothing useful about `specs/.../tasks.md`, and a
-# spec-kit agent prompt is not a CI control however much it looks like one.
-# On the sample corpus this is 29 of code-polymer's 48 files: 60% of the repo
-# was toolchain artifacts, each costing a model call and diluting the pass rate.
-#
-# These need position, not name. "agents" and "prompts" are ordinary source
-# folder names -- this project has agents/ -- so putting them in SKIP_DIRS would
-# silently exclude real code. ".github/" itself must stay walkable because
-# .github/workflows/ is a genuine CI control that GIT-8 has to see.
+# Spec-driven-development scaffolding, policies govern the pipeline
+# that runs in production, not the documents specifying it.
 SKIP_PATH_PREFIXES = (
     "specs/",
     ".specify/",
@@ -113,17 +93,6 @@ def _read_notebook(path: Path) -> str:
 
 CSV_PROFILE_ROWS = 5
 
-# Value shapes are classified locally and reported as labels, never as values.
-# PII-4 needs to know that a column holds real email addresses rather than
-# placeholders; it does not need -- and must not be sent -- the addresses
-# themselves, which would land in the prompt and in machine_report.json.
-# Order matters: the first pattern to match wins, so the specific shapes are
-# tested before the permissive ones (a date and a plain amount would both
-# otherwise be swallowed by phone-like).
-#
-# The labels describe SHAPE, not meaning: "capitalized-words" is what the
-# regex can actually prove. Deciding whether that column holds people's names
-# is the auditor's job, and it has the column name to reason with.
 _VALUE_SHAPES: list[tuple[str, re.Pattern[str]]] = [
     ("placeholder", re.compile(r"^(?:x{3,}|\*{3,}|<[^>]*>|redacted|n/?a|test|sample|foo|bar)$", re.IGNORECASE)),
     ("email-like", re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")),
@@ -189,15 +158,14 @@ def scan(repo_path: str) -> RepositorySnapshot:
     files: list[FileRecord] = []
     has_readme = False
 
-    # os.walk yields directory entries in filesystem order, which is neither
-    # sorted nor stable as files are added and removed. The holistic pass fills a
-    # fixed character budget in this order and drops whatever no longer fits, so
-    # an unsorted walk decides which files that pass is even allowed to see.
+    # Every sorted() here is load-bearing: os.walk yields entries in filesystem
+    # order, which is neither sorted nor stable. The holistic pass fills a fixed
+    # character budget in this order and drops what no longer fits, so an
+    # unsorted walk would decide which files that pass is allowed to see.
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = Path(dirpath).relative_to(root).as_posix()
         prefix = "" if rel_dir == "." else f"{rel_dir}/"
-        # Pruned here rather than filtered per file, so an excluded tree is never
-        # descended into at all.
+        # Pruned in place, so an excluded tree is never descended into at all.
         dirnames[:] = sorted(
             d for d in dirnames
             if d not in SKIP_DIRS
@@ -217,7 +185,7 @@ def scan(repo_path: str) -> RepositorySnapshot:
                 header_line, columns = _read_csv_header(file_path)
                 profile = _profile_csv_values(file_path, columns)
                 content = f"{header_line}\n{profile}" if profile else header_line
-                files.append(FileRecord(path=rel_path, file_type=FileType.CSV, content=content, csv_columns=columns))
+                files.append(FileRecord(path=rel_path, file_type=FileType.CSV, content=content))
             elif suffix in TEXT_EXTENSIONS:
                 files.append(FileRecord(path=rel_path, file_type=TEXT_EXTENSIONS[suffix], content=_read_text(file_path)))
             # unrecognised extensions (images, binaries, parquet, etc.) are skipped entirely

@@ -1,7 +1,7 @@
 # Governance Constitution — Data Pipeline Rules
 
 > Auto-generated from `policies/policies.yaml`.
-> **Do not edit manually** — run `python generate_rules_md.py` to regenerate.
+> **Do not edit manually** — run `python scripts/generate_rules_md.py` to regenerate.
 
 ---
 
@@ -101,7 +101,7 @@ Every package in requirements*.txt, environment.yml or pyproject.toml carries an
 
 ---
 
-## Part 2 — Conditional rules (check `applies_when` before evaluating)
+## Part 2 — Conditional rules (check `applies_to` before evaluating)
 
 ### DQ-1 · Data quality validation present  [HIGH]
 

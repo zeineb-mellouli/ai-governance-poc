@@ -2,40 +2,31 @@
 #
 # The edge-case repo: deliberately mixes correct (_2024-07-01) and incorrect
 # (_20240701) date suffixes on otherwise identical files. Its purpose is to
-# test CONSISTENCY -- the same rule applied the same way to the same pattern.
-# A partial score here means the audit is answering inconsistently, which is
-# worse than answering wrongly.
+# test consistency; the same rule applied the same way to the same pattern.
+
 
 repo: fin-code-liquidity_forecast
 
 expect_violations:
-  # six files with an 8-digit date suffix -- all six must fire
   - {policy: NAM-5, file: bronze/BankAccountBalances_20240701.csv, note: 8-digit date suffix}
   - {policy: NAM-5, file: silver/BankAccountBalances_20240701.csv, note: 8-digit date suffix}
   - {policy: NAM-5, file: silver/BankAccountBalances_validated_20240701.csv, note: 8-digit date suffix, lowercase 'validated' segment}
   - {policy: NAM-5, file: silver/DailyCashMovements_20240701.csv, note: 8-digit date suffix}
   - {policy: NAM-5, file: silver/DailyCashMovements_validated_20240701.csv, note: 8-digit date suffix, lowercase 'validated' segment}
   - {policy: NAM-5, file: gold/LiquidityForecast_20240701.csv, note: 8-digit date suffix}
-  # bare Id as the sole primary key identifier
   - {policy: SQL-11, file: Treasury_SQL/CreateCounterpartyDim.sql, note: "Id INT PRIMARY KEY -- unqualified, should be CounterpartyId or CounterpartyKey"}
 
 expect_clean:
-  # the control file: same shape, correct suffix. If this fires while the six
-  # above do not, the rule is inverted.
   - {policy: NAM-5, file: bronze/DailyCashMovements_2024-07-01.csv, note: correct CamelCase_yyyy-MM-dd}
   - {policy: NAM-5, file: Treasury_Pipeline/01_IngestCashPositions.py, note: 01_ stage prefix}
   - {policy: NAM-5, file: Treasury_Pipeline/02_ValidateAndTransform.py, note: 02_ stage prefix}
   - {policy: NAM-5, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: 03_ stage prefix}
-  # seed is set explicitly and passed to the split
   - {policy: REPRO-6, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: np.random.seed and random_state=RANDOM_STATE}
   - {policy: REPRO-13, file: requirements.txt, note: all five packages pinned}
-  # 02 is the quality gate and does validate
   - {policy: DQ-1, file: Treasury_Pipeline/02_ValidateAndTransform.py, note: asserts on duplicates and null amounts}
-  # all three stages log to file, including the error path in 01
   - {policy: OPS-2, file: Treasury_Pipeline/01_IngestCashPositions.py, note: logging + logger.exception}
   - {policy: OPS-2, file: Treasury_Pipeline/02_ValidateAndTransform.py, note: logging configured}
   - {policy: OPS-2, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: logging configured}
-  # medallion order respected end to end
   - {policy: ARCH-12, file: Treasury_Pipeline/02_ValidateAndTransform.py, note: silver -> silver with validation}
   - {policy: ARCH-12, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: silver -> gold with groupby aggregation}
   - {policy: SQL-10, file: Treasury_SQL/CreateLiquidityForecastFact.sql, note: Reporting.LiquidityForecastFact already correct}
@@ -43,16 +34,9 @@ expect_clean:
   - {policy: GIT-8, file: azure-pipelines.yml, note: master + develop only}
   - {policy: SEC-3, file: Treasury_Pipeline/01_IngestCashPositions.py, note: no credentials}
   - {policy: PII-4, file: bronze/BankAccountBalances_20240701.csv, note: account id and balance, no direct identifiers}
-  # repo-level: CreateLiquidityForecastFact.sql states "one row per bank
-  # account per forecast day" -- documented in a different file from the writer
   - {policy: DM-7, file: null, note: grain stated in Treasury_SQL/CreateLiquidityForecastFact.sql}
 
 tolerate:
-  # 01 writes to silver/ without validating first, which ARCH-12 rule (4)
-  # covers -- but 02 then validates and writes the _validated_ files that 03
-  # actually consumes. Whether "silver" means the landing file or the
-  # validated one is genuinely unresolved in the policy.
   - {policy: ARCH-12, file: Treasury_Pipeline/01_IngestCashPositions.py, note: writes silver before validation; two-step silver gate is undefined}
   - {policy: DQ-1, file: Treasury_Pipeline/01_IngestCashPositions.py, note: same two-step silver gate question}
-  # 03 reads an already-validated input -- the DQ-1 per-file scope question
   - {policy: DQ-1, file: Treasury_Pipeline/03_ForecastLiquidity.py, note: input validated upstream in 02}

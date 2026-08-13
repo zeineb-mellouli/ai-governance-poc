@@ -1,37 +1,25 @@
-"""Auditor Agent: hybrid ChromaDB retrieval + one grounded OpenAI call per file.
+"""Auditor Agent: deterministic checks plus grounded LLM passes over one repository.
 
-Design notes:
-- Checks that are exact pattern matches against a fixed grammar (repo naming,
-  README presence, file/folder naming) rather than semantic judgments are
-  evaluated deterministically here with no LLM call and confidence 1.0. Every
-  other policy requires reading and interpreting file content (medallion
-  layering, undocumented join keys, branch-name conventions embedded in CI YAML,
-  hardcoded-secret patterns, etc.) and is delegated to the LLM, grounded in
-  the policy text retrieved from ChromaDB.
-- The policy corpus is small (12 policies), so retrieval here *ranks* every
-  policy per file (semantic + keyword, fused via reciprocal rank fusion)
-  rather than truncating to a top-k subset. The ranking supplies the
-  retrieval_chunk_id / retrieval_score used for citation, but the policies are
-  presented to the model in fixed policy-file order -- since nothing is
-  truncated, ranking could only reorder the prompt, and prompt order shifts
-  model attention. That was variance bought for no recall.
-- Per-file evaluation can't see anything that's only visible by looking at
-  the repo as a whole (e.g. "no silver-layer file exists anywhere"). One
-  additional holistic pass (_evaluate_repo_holistic) gets the full file
-  listing and content and is scoped to exactly that: violations no single
-  file can reveal on its own. A holistic finding is dropped if a per-file
-  check already flagged the same policy, so nothing is ever reported twice.
+Three passes:
+1. Deterministic checks (REPO-9, NAM-5 naming, REPRO-13). No model call, confidence 1.0.
+2. One LLM call per file, judged only against the policies whose globs cover it.
+3. One whole-repo call, for violations no single file can reveal, something
+   required being absent, or an inconsistency only visible across files.
 
-Reproducibility contract:
-- Every model call goes through llm_client.chat_json, which fixes temperature
-  and seed and records the serving backend's system_fingerprint.
-- The model must return exactly one verdict per candidate policy. Letting it
-  omit non-applicable policies made the *number of findings* a model decision,
-  so two runs of one repo produced different-sized reports and no rate had a
-  stable denominator.
-- Verdict status is derived from booleans the model sets, never stated by it.
-  A model cannot emit a status that contradicts its own evidence if it never
-  writes the status.
+Retrieval ranks every policy per file (semantic + keyword, fused by reciprocal
+rank fusion) rather than truncating to a top-k subset. Scores are used for
+citation only; the prompt keeps fixed policy-file order, since reordering it
+would shift model attention for no gain in recall.
+
+Reproducibility rests on three rules:
+- Every model call goes through llm_client.chat_json, which fixes temperature and
+  seed and records the serving backend's system_fingerprint.
+- The model returns one verdict per candidate policy, so the finding count is a
+  function of the file list rather than a model decision.
+- Status is derived from the model's booleans, never stated by it, so a verdict
+  cannot contradict its own evidence.
+
+See docs/ARCHITECTURE.md for the reasoning behind each.
 """
 
 import os
@@ -68,38 +56,19 @@ REPO_NAME_PATTERN = re.compile(r"^(aud|fin|gfp|ops|tax)-(code|sql|synapse)-[a-z]
 RRF_K = 60
 
 # --- self-consistency sampling ----------------------------------------------
-# A model asked to rate its own certainty answers 0.95 to almost everything --
-# across the whole sample corpus the reported confidence sat between 0.86 and
-# 1.00 with a mean of 0.96, which carries no information. So the model is no
-# longer asked. Each prompt is sampled AUDIT_SAMPLES times and the verdict is
-# the majority; confidence is the fraction of samples that agreed, which is a
-# quantity we measured rather than one the model asserted.
-#
-# This is also the variance fix: a majority over k samples moves only when the
-# model's underlying belief moves, whereas a single sample moves whenever the
-# decoding does. Cost is linear in AUDIT_SAMPLES -- set AGA_AUDIT_SAMPLES=1 for
-# a cheap run, at the price of confidence collapsing to a constant 1.0 ("no
-# disagreement was measurable"), which in turn makes the remediation confidence
-# gate a no-op.
-#
-# This is only the DEFAULT. Callers pass `samples=` explicitly (the CLI's
-# --samples flag does), so which k produced a run is recorded on the report
-# rather than being ambient shell state that a later command silently inherits.
+# Confidence is measured, not self-reported: each prompt is sampled k times and
+# confidence is the fraction of samples that agreed. Cost is linear in k; at k=1
+# every confidence is 1.0 and the remediation confidence gate never fires.
 AUDIT_SAMPLES = max(1, int(os.environ.get("AGA_AUDIT_SAMPLES", "3")))
-# Greedy decoding would return k identical samples and measure nothing. A small
-# temperature gives the samples room to disagree where the model is genuinely
-# unsure, and stays near-greedy where it is not.
+# Greedy decoding would return k identical samples and measure nothing.
 VOTE_TEMPERATURE = 0.3
 
-# When True, a NON_COMPLIANT verdict whose evidence_quote cannot be found in the
-# file it was drawn from is routed to NEEDS_REVIEW rather than reported. This is
-# the anti-fabrication control: the observed failure mode was a per-file verdict
-# asserting facts about a *different* file it had never been shown.
+# Anti-fabrication control: a violation whose quote is not found in the file it
+# was drawn from becomes NEEDS_REVIEW instead of being reported.
 ENFORCE_EVIDENCE_GROUNDING = True
 
-# --- REPRO-13 deterministic dependency pinning ------------------------------
-# A lockfile is where transitive versions belong, so its presence satisfies the
-# policy on its own regardless of what the manifest looks like.
+# --- REPRO-13 dependency pinning ---------------------------------------------
+# A lockfile satisfies the policy on its own, whatever the manifest looks like.
 LOCKFILE_NAMES = frozenset({
     "requirements.lock", "poetry.lock", "uv.lock", "Pipfile.lock",
     "conda-lock.yml", "conda-lock.yaml", "pdm.lock",
@@ -108,32 +77,20 @@ REQUIREMENTS_GLOB = "requirements*.txt"
 ENVIRONMENT_NAMES = frozenset({"environment.yml", "environment.yaml"})
 PYPROJECT_NAME = "pyproject.toml"
 
-
-# --- NAM-5 deterministic naming grammar -------------------------------------
-# These rules are regex-decidable, so leaving them to the LLM produced
-# inconsistent verdicts on byte-identical inputs (identical date suffixes
-# flagged in one file and passed in its neighbour). They are evaluated here
-# once, with confidence 1.0, exactly as REPO-9 already is.
-
+# --- NAM-5 naming grammar ----------------------------------------------------
+# Regex-decidable, so evaluated here at confidence 1.0 rather than by the model.
 NAME_CHECKED_SUFFIXES = frozenset({".csv", ".parquet", ".py", ".ipynb", ".sql", ".yml", ".yaml"})
-
-EXEMPT_FILENAMES = frozenset({
-    "azure-pipelines.yml", "dockerfile", "makefile", ".gitignore",
-    "requirements.txt", "setup.cfg", "pyproject.toml", "conftest.py",
-    "__init__.py", "readme.md", "license", ".env.example", ".env.template",
-    ".env.sample",
-})
-
+# Only names carrying a checked suffix need listing here; every other extension
+# is already exempt by NAME_CHECKED_SUFFIXES above.
+EXEMPT_FILENAMES = frozenset({"azure-pipelines.yml", "conftest.py", "__init__.py"})
 EXEMPT_PATH_PREFIXES = (".github/workflows/", ".github/agents/", ".github/prompts/", ".specify/", ".claude/")
-
 VAGUE_NAME_TOKENS = ("untitled", "final", "copy", "v2", "actual", "temp")
 
 STAGE_PREFIX_RE = re.compile(r"^\d{2}_")
 GOOD_DATE_SUFFIX_RE = re.compile(r"_\d{4}-\d{2}-\d{2}$")
 BAD_DATE_SUFFIX_RE = re.compile(r"_\d{8}$")
 CAMEL_CASE_RE = re.compile(r"^[A-Z][A-Za-z0-9]*$")
-# A vague token counts only as a whole word or a CamelCase segment, so
-# "finalise" or "Temperature" do not trip it.
+# Whole word or CamelCase segment only, so "finalise"/"Temperature" do not trip.
 VAGUE_TOKEN_RES = {
     token: re.compile(rf"(?:^|[^A-Za-z]){token}(?:$|[^A-Za-z])", re.IGNORECASE)
     for token in VAGUE_NAME_TOKENS
@@ -241,21 +198,17 @@ def _load_policies() -> dict[str, dict]:
 
 
 # --- applicability: decided in code, from the policy's globs -----------------
-# Every "Return NOT_APPLICABLE when the file is a test / a README / a DDL file"
-# sentence that used to live in the prose hints is now one of these globs. File
-# type is a structural fact; asking a model to re-derive it per file cost tokens
-# and was answered inconsistently. A policy that does not match is never even
-# offered, so the model cannot volunteer a verdict on it.
+# File type is a structural fact, so it is settled here rather than by the model.
+# A policy whose globs do not match is never offered, so the model cannot
+# volunteer a verdict on it.
 
 
 def _path_matches(rel_path: str, pattern: str) -> bool:
     """fnmatch against the full path and the bare filename, tolerating a **/ prefix.
 
-    Case-insensitive on purpose. fnmatch follows the platform's case rules, so
-    `*pipeline*.yml` would match Treasury_Pipeline/x.yml on Windows and not on
-    macOS -- the same repository would be audited differently depending on who
-    ran it. Naming conventions are the thing being judged here; they should not
-    also decide what gets judged.
+    Case-insensitive on purpose: fnmatch follows platform case rules, so
+    `*pipeline*.yml` would match Treasury_Pipeline/x.yml on Windows but not on
+    macOS, auditing the same repository differently depending on who ran it.
     """
     lowered = rel_path.lower()
     name = Path(lowered).name
@@ -283,24 +236,15 @@ def _file_candidates(rel_path: str, policies_by_id: dict[str, dict]) -> list[str
 
 def _holistic_candidates(policies_by_id: dict[str, dict]) -> list[str]:
     """Policies the whole-repo pass may judge: everything a model decides, at either scope.
-
-    Hybrid policies are excluded: NAM-5's naming half is deterministic and its
-    column half is a per-file question, so there is nothing for a repo-wide pass
-    to add.
     """
     return [pid for pid, policy in policies_by_id.items() if policy.get("evaluation") == "model"]
-
-
-def _deterministic_ids(policies_by_id: dict[str, dict]) -> set[str]:
-    return {pid for pid, p in policies_by_id.items() if p.get("evaluation") == "deterministic"}
 
 
 def _repository_only_ids(policies_by_id: dict[str, dict]) -> set[str]:
     """Model policies answerable only across the whole repo, so withheld from per-file.
 
-    DM-7 asks whether a gold output's grain is documented *anywhere* -- the module
-    that writes the data and the DDL that documents it are routinely different
-    files, so a per-file verdict is structurally unable to answer it.
+    DM-7 asks whether a gold output's grain is documented *anywhere*, and the
+    module writing the data is routinely not the file documenting it.
     """
     return {
         pid for pid, p in policies_by_id.items()
@@ -371,12 +315,10 @@ _MANIFEST_PARSERS = (
 
 
 def _evaluate_dependency_pinning(snapshot: RepositorySnapshot, policy: dict) -> Finding:
-    """REPRO-13, decided by parsing rather than by asking a model.
+    """REPRO-13, decided by parsing the manifests rather than by asking a model.
 
-    As a model check this was the pipeline's biggest false-positive source: it
-    fired on every repository in the corpus, including six whose manifests were
-    fully pinned, because the policy text instructed the model to conclude
-    NON_COMPLIANT and it went looking for a justification.
+    Whether a version specifier is exact is a parsing question; answering it in
+    code removed the pipeline's largest source of false positives.
     """
     def finding(status: FindingStatus, evidence: str, path: str | None = None) -> Finding:
         return Finding(
@@ -450,13 +392,11 @@ def _rank_policies(
 ) -> dict[str, float]:
     """Return {policy_id: fused_retrieval_score}, used for citation only.
 
-    semantic_query_text is embedded for the vector search; keyword_haystack_text
-    is scanned literally. The two are separate so a caller can cap the (costlier)
-    embedding input while still keyword-matching against the full text.
+    The two query texts are separate so a caller can cap the costlier embedding
+    input while still keyword-matching the full text.
 
-    The scores are deliberately NOT used to order the prompt. Every policy is
-    sent on every call, so ordering by score would change only which policies the
-    model sees first -- a real effect on its output, for no gain in recall.
+    Scores deliberately do NOT order the prompt: every policy is sent on every
+    call, so ordering by score would only change which the model sees first.
     """
     semantic = collection.query(query_texts=[semantic_query_text], n_results=len(policies_by_id))
     semantic_rank = {pid: rank for rank, pid in enumerate(semantic["ids"][0])}
@@ -533,9 +473,8 @@ def _name_violations(rel_path: str) -> list[str]:
 def _camelise(core: str) -> str | None:
     """snake_case / kebab-case / spaced -> CamelCase, or None if it cannot be made valid.
 
-    Only each token's first letter is forced upper: the rest is left alone so an
-    already-correct CamelCase segment survives intact
-    (CollateralPositions_validated -> CollateralPositionsValidated).
+    Only each token's first letter is forced upper, so an already-correct
+    CamelCase segment survives (CollateralPositions_validated -> ...Validated).
     """
     tokens = [t for t in re.split(r"[_\-\s]+", core) if t]
     if not tokens:
@@ -547,15 +486,14 @@ def _camelise(core: str) -> str | None:
 def _suggest_name(rel_path: str) -> str | None:
     """Return the corrected repo-relative path for a naming violation, or None.
 
-    None means the correct name is a judgement call about what the file actually
-    holds, which is the author's to make -- guessing one is exactly the
-    "do not invent data" failure the remediation prompt already forbids.
+    None means the correct name depends on what the file holds, which is the
+    author's call -- guessing one would be inventing data.
     """
     path = Path(rel_path)
     filename = path.name
 
-    # A vague token is a statement that the name carries no information. There is
-    # nothing to derive a better name from.
+    # A vague token says the name carries no information, so there is nothing to
+    # derive a better one from.
     for segment in path.parts:
         stem = Path(segment).stem if segment == filename else segment
         if any(pattern.search(stem) for pattern in VAGUE_TOKEN_RES.values()):
@@ -574,7 +512,7 @@ def _suggest_name(rel_path: str) -> str | None:
         try:
             date_suffix = "_" + datetime.strptime(digits, "%Y%m%d").strftime("%Y-%m-%d")
         except ValueError:
-            return None  # eight digits that are not a real date -- do not guess the intent
+            return None  
         core = core[: bad_date.start()]
     else:
         good_date = GOOD_DATE_SUFFIX_RE.search(core)
@@ -604,9 +542,8 @@ def _naming_remediation(rel_path: str) -> tuple[Remediation | None, RemediationS
         )
     description = f"Rename to '{suggested}' to satisfy the NAM-5 naming grammar."
     if Path(rel_path).suffix.lower() == ".py":
-        # Renaming a module is not just a file rename: every `import` of it
-        # breaks. Say so rather than shipping a command that leaves the repo
-        # broken and calling the finding resolved.
+        # Renaming a module breaks every import of it. Say so, rather than
+        # shipping a command that leaves the repo broken.
         description += (
             " This renames a Python module, so every import of "
             f"'{Path(rel_path).stem}' must be updated to '{Path(suggested).stem}' in the same change."
@@ -625,11 +562,8 @@ def _naming_remediation(rel_path: str) -> tuple[Remediation | None, RemediationS
 def _evaluate_file_names(snapshot: RepositorySnapshot) -> list[Finding]:
     """Deterministic NAM-5 naming verdicts -- one finding per file, compliant or not.
 
-    The fix is derived here too. These findings are pure string manipulation at
-    confidence 1.0, so sending them to a model to be "fixed" only gave it the
-    chance to look at the file's *contents*, find nothing wrong in them, and
-    report that there was no violation to fix -- which is how deterministic
-    naming violations ended up dominating the human-review queue.
+    The fix is derived here too, so the Remediation Agent never revisits these:
+    reading file contents can only make it doubt a grammar check on the name.
     """
     findings = []
     for file in snapshot.files:
@@ -666,13 +600,6 @@ def _evaluate_file_names(snapshot: RepositorySnapshot) -> list[Finding]:
     return findings
 
 
-# The post-hoc filter that used to drop stray LLM NAM-5 verdicts is gone: NAM-5
-# now declares applies_to [**/*.csv, **/*.parquet], so the column rule is only
-# ever offered on a file that can carry it, and _findings_from_payload records
-# verdicts only for policies it actually asked about. The filter had no input
-# left to reject.
-
-
 def _evaluate_repo_level(
     snapshot: RepositorySnapshot,
     policies_by_id: dict[str, dict] | None = None,
@@ -697,9 +624,8 @@ def _evaluate_repo_level(
         retrieval_chunk_id="REPO-9",
         retrieval_score=1.0,
     ))
-    # REPO-9 keeps its LLM remediation on purpose: unlike a file rename, the
-    # compliant repo name is not derivable from the wrong one -- nothing in
-    # "FinalProject" implies a department code or a resource type.
+    # REPO-9 keeps its LLM remediation: unlike a file rename, the compliant repo
+    # name is not derivable from the wrong one.
 
     if not snapshot.has_readme:
         findings.append(Finding(
@@ -747,9 +673,8 @@ def _normalise_whitespace(text: str) -> str:
 def _evidence_is_grounded(quote: str, source_text: str) -> bool:
     """True if the model's quote really appears in the text it was shown.
 
-    Compared with whitespace collapsed, because models routinely re-wrap a quote
-    that is otherwise verbatim. A quote that fails this was not copied out of the
-    file -- it was reconstructed, which is the shape of a fabricated finding.
+    Whitespace is collapsed first, since models re-wrap otherwise-verbatim
+    quotes. A quote that fails this was reconstructed, not copied.
     """
     if TRUNCATION_NOTICE in source_text:
         return True  # the file was capped; a real quote may sit in the part we cut
@@ -759,10 +684,9 @@ def _evidence_is_grounded(quote: str, source_text: str) -> bool:
 def _verdict_to_status(verdict: dict, source_text: str) -> tuple[FindingStatus, str | None]:
     """Derive the status from the model's booleans. Returns (status, routing_note).
 
-    The model never states a status. It answers two yes/no questions and supplies
-    a quote; the status falls out of those. This is what makes a verdict that
-    contradicts its own evidence unrepresentable rather than something to detect
-    afterwards by regexing prose.
+    The model answers two yes/no questions and supplies a quote; the status falls
+    out of those. That makes a verdict contradicting its own evidence
+    unrepresentable, rather than something to detect afterwards.
     """
     if verdict.get("applies") is False:
         return FindingStatus.NOT_APPLICABLE, None
@@ -794,10 +718,9 @@ def _findings_from_payload(
 ) -> tuple[list[Finding], list[str]]:
     """Turn one model response into exactly len(candidate_ids) findings.
 
-    Returns (findings, missing_policy_ids). A policy the model failed to answer
-    becomes an explicit NOT_APPLICABLE at confidence 0.0 -- the conservative
-    reading, and one that keeps the finding grid the same size on every run so a
-    diff between two runs is a changed verdict rather than a changed shape.
+    Returns (findings, missing_policy_ids). An unanswered policy becomes
+    NOT_APPLICABLE at confidence 0.0, keeping the grid the same size every run so
+    a diff between runs is a changed verdict rather than a changed shape.
     """
     returned = {
         v["policy_id"]: v
@@ -841,8 +764,7 @@ def _findings_from_payload(
             severity=policy["severity"],
             file_path=file_path,
             status=status,
-            # A single sample carries no information about agreement. _vote
-            # replaces this with the measured fraction; with AUDIT_SAMPLES=1 it
+            # _vote replaces this with the measured agreement fraction; at k=1 it
             # stays 1.0, meaning "no disagreement was measurable".
             confidence_score=1.0,
             evidence=evidence or "(no evidence supplied)",
@@ -857,13 +779,9 @@ def _findings_from_payload(
 def _vote(samples: list[list[Finding]]) -> list[Finding]:
     """Collapse k independently-sampled verdict grids into one by majority.
 
-    Confidence becomes the fraction of samples that agreed -- a measured
-    quantity, unlike the model's own estimate of its certainty, which sat at a
-    near-constant 0.96 regardless of whether the finding was right.
-
-    A tie means the model genuinely has no settled view, which is exactly what
-    NEEDS_REVIEW is for. Every sample answers the same fixed candidate list, so
-    the grids always align.
+    Confidence becomes the measured fraction of samples that agreed. A tie means
+    the model has no settled view, which is what NEEDS_REVIEW is for. Every
+    sample answers the same fixed candidate list, so the grids always align.
     """
     if len(samples) == 1:
         return samples[0]
@@ -881,9 +799,8 @@ def _vote(samples: list[list[Finding]]) -> list[Finding]:
         agreement = round(top_count / len(samples), 3)
         split = ", ".join(f"{s.value}x{counts[s]}" for s in sorted(counts, key=lambda s: s.value))
 
-        # Whatever the outcome, keep what the losing samples argued. Discarding
-        # it left a non-unanimous verdict able to report only that disagreement
-        # occurred, which is not enough for anyone to act on.
+        # Keep what the losing samples argued, whatever the outcome: without it
+        # a non-unanimous verdict can only report that disagreement happened.
         def _dissent_from(exclude: FindingStatus) -> Dissent | None:
             losers = [f for f in candidates if f.status != exclude]
             if not losers:
@@ -922,9 +839,8 @@ def _vote(samples: list[list[Finding]]) -> list[Finding]:
 def _sample_settings(index: int, samples: int) -> tuple[int, float]:
     """(seed, temperature) for sample `index` of `samples`.
 
-    The seeds walk a fixed sequence from the base seed, so the *set* of samples
-    is reproducible even though the samples differ from one another. With one
-    sample we stay fully greedy.
+    Seeds walk a fixed sequence from the base seed, so the *set* of samples is
+    reproducible even though the samples differ. One sample stays fully greedy.
     """
     if samples == 1:
         return REQUEST_SEED, 0.0
@@ -1094,22 +1010,13 @@ def _dedupe_holistic(
 ) -> list[Finding]:
     """Neutralise duplicate whole-repo verdicts without changing how many rows there are.
 
-    An earlier version *dropped* rows here, which quietly undid the fixed-grid
-    guarantee: the holistic pass contributed somewhere between zero and one row
-    per policy depending on how many policies the model chose to speak about, so
-    two runs of the same repository still produced reports of different sizes.
+    Never drop a row: report size must stay a function of the repo, not of how
+    many policies the model chose to speak about. A duplicate is instead
+    neutralised to NOT_APPLICABLE, which the compliance rate excludes.
 
-    Every holistic verdict is now kept as a row. A row is neutralised to
-    NOT_APPLICABLE -- which is excluded from the compliance-rate denominator --
-    when it would duplicate the per-file pass:
-
-      * the policy is file-scoped and the holistic verdict is not a violation,
-        so it adds nothing the per-file grid does not already record; or
-      * a per-file check already flagged that policy NON_COMPLIANT.
-
-    A repository-scoped policy (DM-7) keeps its verdict either way: no other pass
-    evaluates it. A file-scoped policy keeps a NON_COMPLIANT verdict only when no
-    per-file check found it -- that is the cross-file finding this pass exists for.
+    Repository-scoped policies (DM-7) always keep their verdict -- no other pass
+    evaluates them. A file-scoped policy keeps a NON_COMPLIANT verdict only when
+    no per-file check found it; that is the cross-file case this pass exists for.
     """
     already_flagged = {f.policy_id for f in per_file_findings if f.status == FindingStatus.NON_COMPLIANT}
 
@@ -1171,7 +1078,7 @@ def audit(
             )
             findings.extend(file_findings)
             errors.extend(file_errors)
-        except Exception as exc:  # noqa: BLE001 - a single bad file must not abort the audit
+        except Exception as exc:  # a single bad file must not abort the audit
             errors.append(f"Auditor Agent failed on {file.path}: {exc}")
 
     if progress:
@@ -1182,7 +1089,7 @@ def audit(
         )
         findings.extend(_dedupe_holistic(findings, holistic, _repository_only_ids(policies_by_id)))
         errors.extend(holistic_errors)
-    except Exception as exc:  # noqa: BLE001 - the whole-repo pass failing must not lose per-file findings
+    except Exception as exc:  # the whole-repo pass failing must not lose per-file findings
         errors.append(f"Auditor Agent failed on whole-repo pass: {exc}")
 
     if progress:

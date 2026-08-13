@@ -1,17 +1,9 @@
 """Interactive governance dashboard.
 
-    streamlit run dashboard.py -- --reports reports_v3 [--repo FinalProject]
+    streamlit run dashboard.py -- --reports reports [--repo FinalProject]
 
 Launched for you by `python main.py audit --repo <path> --open`, or on its own
-via `python main.py dashboard`.
-
-It reads finished machine_report.json files and never calls the API, so
-filtering, searching and re-styling cost nothing and a report can be explored
-long after the run that produced it. Auditing is the CLI's job; this only reads.
-
-The layout answers three questions in order, which is also the order a sceptical
-reader asks them: how bad is it, what exactly is wrong, and how much of this
-should I believe.
+via `python main.py dashboard`. It reads finished machine_report.json files 
 """
 
 import argparse
@@ -21,10 +13,13 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv()  # the audit needs the Azure credentials in this process too
 
-from agents.orchestrator import load_reports, run_audit, write_reports  # noqa: E402
-from agents.schemas import ComplianceReport, FindingStatus  # noqa: E402
+# The credentials are needed because the sidebar can run a real audit.
+load_dotenv()
+
+from agents.html_report import _split_evidence 
+from agents.orchestrator import load_reports, run_audit, write_reports 
+from agents.schemas import ComplianceReport, FindingStatus  
 
 SEVERITY_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
 SEVERITY_COLOR = {"HIGH": "#b3261e", "MEDIUM": "#8a5a00", "LOW": "#4a5568"}
@@ -39,23 +34,6 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--repo", default=None)
     known, _ = parser.parse_known_args(sys.argv[1:])
     return known
-
-
-def _split_evidence(evidence: str) -> tuple[str, str | None]:
-    """Pull the quoted source line back out of the packed evidence string."""
-    import ast
-    import re
-
-    evidence = re.sub(r"\s{2}\[[^\]]*\]\s*$", "", evidence)
-    match = re.search(r"\s{2}Quoted:\s(.+)$", evidence, re.DOTALL)
-    if not match:
-        return evidence.strip(), None
-    raw = match.group(1).strip()
-    try:
-        quote = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        quote = raw
-    return evidence[: match.start()].strip(), quote
 
 
 def _chip(text: str, color: str) -> str:
@@ -90,8 +68,6 @@ def render_overview(reports: list[ComplianceReport]) -> None:
         rows.append({
             "Repository": report.repo_name,
             "High": score["high_failures"],
-            # Stored 0-100, not 0-1: ProgressColumn applies `format` to the raw
-            # value, so a 0-1 fraction renders 0.397 as "0.4%" instead of "39.7%".
             "Pass rate": (score["weighted_pass_rate"] or 0.0) * 100,
             "Violations": counts.get("NON_COMPLIANT", 0),
             "Passed": counts.get("COMPLIANT", 0),
@@ -104,8 +80,6 @@ def render_overview(reports: list[ComplianceReport]) -> None:
         use_container_width=True,
         hide_index=True,
         column_config={
-            # A bar, not a bare number: it is the only cross-repo comparison on
-            # the page now that there is no grade to sort by.
             "Pass rate": st.column_config.ProgressColumn(
                 "Weighted pass rate", format="%.1f%%", min_value=0.0, max_value=100.0,
             ),
@@ -125,15 +99,14 @@ def render_overview(reports: list[ComplianceReport]) -> None:
             "both sides** and listed per repository; they are not evidence either way.\n\n"
             "There is deliberately no pass/fail grade. The rate is a measurement; "
             "whether a repository is acceptable depends on which policies matter to "
-            "you, and the CI gate decides that explicitly with `--fail-on <severity>`. "
-            "Read the rate together with the high-severity count — a repository at 95% "
+            "you. Read the rate together with the high-severity count — a repository at 95% "
             "with one hardcoded credential is not the same as one at 95% with a "
             "naming violation."
         )
 
 
 def render_finding(finding, show_agreement: bool = True, header: str | None = None) -> None:
-    sentence, quote = _split_evidence(finding.evidence)
+    sentence, quote, _ = _split_evidence(finding.evidence)
     location = finding.file_path or "repository-level"
     header = header or f"{finding.severity} · {finding.policy_id} · {location}"
 
@@ -151,12 +124,9 @@ def render_finding(finding, show_agreement: bool = True, header: str | None = No
             st.code(quote, language=None)
 
         if finding.remediation:
-            # A NAM-5 rename is computed from the filename by a total function and
-            # re-checked before it is offered. Everything else was written by the
-            # model and nothing verified it. Labelling them the same would imply
-            # confidence the second kind has not earned.
-            computed = finding.policy_id == "NAM-5" and finding.confidence_score == 1.0
-            st.caption("Computed fix — derived and re-checked" if computed
+            # Computed fixes are derived and re-checked; model-written ones are
+            # not. 
+            st.caption("Computed fix — derived and re-checked" if finding.has_computed_fix
                        else "Suggested fix — model-written, review before applying")
             st.write(finding.remediation.description)
             st.code(finding.remediation.fix, language="bash")
@@ -166,11 +136,8 @@ def render_finding(finding, show_agreement: bool = True, header: str | None = No
                 st.write(finding.remediation_note)
 
         if show_agreement and finding.dissent:
-            # The minority verdict, kept verbatim. Reporting only that the runs
-            # disagreed gave a reader nothing to weigh; the argument for the
-            # other side is the whole reason to look at a near miss.
             d = finding.dissent
-            other_sentence, other_quote = _split_evidence(d.evidence)
+            other_sentence, other_quote, _ = _split_evidence(d.evidence)
             st.caption(f"Dissenting verdict — {d.samples} run(s) said {d.status.value}")
             st.info(other_sentence or "(no evidence given)")
             if other_quote:
@@ -216,8 +183,6 @@ def render_repo(report: ComplianceReport) -> None:
 
     # --- filters, in the sidebar so they apply to whatever is on screen
     st.sidebar.markdown("### Filter violations")
-    # Streamlit renders its colour markdown in widget labels, so the severity
-    # scale reads red -> amber -> grey without injecting CSS at its internals.
     severities = [
         level for level, colour in (("HIGH", "red"), ("MEDIUM", "orange"), ("LOW", "gray"))
         if st.sidebar.checkbox(
@@ -328,7 +293,7 @@ def _audit_panel(reports_dir: str) -> None:
             try:
                 report = run_audit(repo_path, samples=samples, progress=on_progress)
                 write_reports(report, reports_dir)
-            except Exception as exc:  # noqa: BLE001 - surface it rather than a stack trace
+            except Exception as exc:  # show the message, not a stack trace
                 bar.empty()
                 st.error(f"The audit could not run: {exc}")
                 return

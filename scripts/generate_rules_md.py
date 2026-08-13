@@ -1,14 +1,14 @@
-"""
-generate_rules_md.py
-Compiles all governance policies from policies.yaml into rules.md --
-the build-time constitution that Copilot reads before generating any code.
+"""Compile policies/policies.yaml into rules.md.
 
-Usage:  python generate_rules_md.py
+rules.md is the build-time constitution -- the document a coding assistant reads
+before generating pipeline code, as opposed to the runtime audit that judges what
+was written. Run from the repository root; rules.md is overwritten every time.
 
-Output: rules.md at the project root (overwritten on every run)
+    python scripts/generate_rules_md.py
 """
 
 from pathlib import Path
+
 import yaml
 
 POLICIES_PATH = "policies/policies.yaml"
@@ -25,8 +25,8 @@ def is_universal(policy: dict) -> bool:
 
 
 def format_block(policy: dict) -> str:
-    pid      = policy["policy_id"]
-    title    = policy["title"]
+    pid = policy["policy_id"]
+    title = policy["title"]
     severity = policy["severity"]
 
     applies = policy.get("applies_to") or []
@@ -63,20 +63,17 @@ def format_block(policy: dict) -> str:
 def main() -> None:
     policies = yaml.safe_load(Path(POLICIES_PATH).read_text(encoding="utf-8"))["policies"]
 
-    universal   = sorted(
-        [p for p in policies if     is_universal(p)],
-        key=lambda p: SEVERITY_ORDER.get(p["severity"], 99),
-    )
-    conditional = sorted(
-        [p for p in policies if not is_universal(p)],
-        key=lambda p: SEVERITY_ORDER.get(p["severity"], 99),
-    )
+    def by_severity(p: dict) -> int:
+        return SEVERITY_ORDER.get(p["severity"], 99)
+
+    universal = sorted([p for p in policies if is_universal(p)], key=by_severity)
+    conditional = sorted([p for p in policies if not is_universal(p)], key=by_severity)
 
     sections = [
         "# Governance Constitution — Data Pipeline Rules",
         "",
         "> Auto-generated from `policies/policies.yaml`.",
-        "> **Do not edit manually** — run `python generate_rules_md.py` to regenerate.",
+        "> **Do not edit manually** — run `python scripts/generate_rules_md.py` to regenerate.",
         "",
         "---",
         "",
@@ -91,7 +88,7 @@ def main() -> None:
         sections.append("")
 
     sections += [
-        "## Part 2 — Conditional rules (check `applies_when` before evaluating)",
+        "## Part 2 — Conditional rules (check `applies_to` before evaluating)",
         "",
     ]
 
@@ -101,11 +98,9 @@ def main() -> None:
         sections.append("---")
         sections.append("")
 
-    output = "\n".join(sections)
-    Path(OUTPUT_PATH).write_text(output, encoding="utf-8")
-
-    print(f"rules.md written — {len(universal)} universal + {len(conditional)} conditional = {len(policies)} total")
-    print(f"Output path: {OUTPUT_PATH}")
+    Path(OUTPUT_PATH).write_text("\n".join(sections), encoding="utf-8")
+    print(f"{OUTPUT_PATH} written — {len(universal)} universal + "
+          f"{len(conditional)} conditional = {len(policies)} policies")
 
 
 if __name__ == "__main__":

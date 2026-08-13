@@ -1,24 +1,17 @@
 """Render a batch of compliance reports as one self-contained HTML page.
 
-Why one page for the whole batch rather than a page per repository: the thing a
-reader needs first is the comparison -- which repositories are in trouble and how
-badly -- and that only exists across repositories. A per-repo page would put the
-comparison nowhere.
+One page for the whole batch, not one per repository: what a reader needs first
+is the comparison across repositories, which a per-repo page cannot show.
 
-Two information-design decisions drive the layout:
+Two layout rules follow from the data:
+- Most rows in a run are passes or not-applicable. They matter for the
+  denominator and nobody reads them, so they appear as counts and the page leads
+  with the violations.
+- Evidence is rendered verbatim, as monospaced code. It is what turns "a model
+  said so" into "here is the line, judge it yourself".
 
-1. 87% of the rows in a run are not violations (302 passing + 153 not-applicable
-   against 69 violations, on the reference corpus). Those rows matter for the
-   denominator and nobody reads them, so they are reported as counts and the
-   page leads with the violations.
-
-2. Evidence is rendered as code, in monospace, verbatim. It is the element that
-   turns "a language model said so" into "here is the line, judge it yourself",
-   which is the whole argument for trusting the tool. Everything else on the
-   page is chrome around it.
-
-No external requests: styles are inline and there are no scripts, so the file
-works from disk, over email, and inside a CI artifact viewer.
+Styles are inline and there are no scripts, so the page works from disk, over
+email, and inside a CI artifact viewer.
 """
 
 import ast
@@ -73,8 +66,7 @@ def _stat(value: str, label: str, tone: str = "") -> str:
 
 
 def _severity_pill(high: int, medium: int, low: int) -> str:
-    """Counts by severity, in place of the pass/fail verdict that used to sit here.
-    A fact about the repository rather than an opinion about it."""
+    """Counts by severity: a fact about the repository, not a verdict on it."""
     parts = []
     for count, name in ((high, "high"), (medium, "medium"), (low, "low")):
         if count:
@@ -83,8 +75,7 @@ def _severity_pill(high: int, medium: int, low: int) -> str:
 
 
 def _rate_bar(rate: float | None, high: int) -> str:
-    """The bar is tinted by whether any high-severity violation exists -- an
-    observed property, not a graded one."""
+    """Tinted by whether a high-severity violation exists: observed, not graded."""
     if rate is None:
         return '<span class="muted">—</span>'
     tone = "has-high" if high else "no-high"
@@ -115,11 +106,9 @@ def _finding_card(finding: Finding) -> str:
             f'<pre><code>{_esc(quote)}</code></pre></div>'
         )
     if finding.remediation:
-        # Every NAM-5 file rename is computed from the filename by a total
-        # function and re-checked before it is offered; everything else was
-        # written by the model and is unverified. Saying which is which stops the
-        # page implying the same confidence in both.
-        computed = finding.policy_id == "NAM-5" and finding.confidence_score == 1.0
+        # Computed fixes are derived and re-checked; model-written ones are not.
+        # Label them differently so the page implies no confidence they lack.
+        computed = finding.has_computed_fix
         label = "computed fix" if computed else "suggested fix"
         parts.append(
             f'<div class="fix {"fix-computed" if computed else ""}">'
@@ -143,16 +132,13 @@ def _repo_section(report: ComplianceReport, open_by_default: bool) -> str:
         (f for f in findings if f.status == FindingStatus.NON_COMPLIANT),
         key=lambda f: (SEVERITY_ORDER.get(f.severity, 9), -f.confidence_score, f.policy_id),
     )
-    # The uncertainty section holds two things a reviewer can act on: verdicts
-    # the samples could not settle, and *passes* the samples disagreed about --
-    # a check that two of three runs called clean and one called a violation is
-    # a near miss worth a second look.
+    # The uncertainty section holds what a reviewer can act on: verdicts the
+    # samples could not settle, and passes they disagreed about -- a check two of
+    # three runs called clean is a near miss worth a second look.
     #
-    # It deliberately excludes NOT_APPLICABLE (39 of the 56 sub-unanimous rows on
-    # the reference corpus): disagreeing about whether a policy even applies to a
-    # file is not a finding, and burying 15 real near-misses under it defeats the
-    # section. Violations are excluded too -- they are already listed above, with
-    # their agreement rate shown on the card.
+    # NOT_APPLICABLE is excluded: disagreeing about whether a policy even applies
+    # is not a finding, and it outnumbers the real near-misses enough to bury
+    # them. Violations are excluded too, being listed above with their agreement.
     undecided = [f for f in findings if f.status == FindingStatus.NEEDS_REVIEW]
     near_misses = [
         f for f in findings
@@ -221,7 +207,7 @@ def _overview_row(report: ComplianceReport) -> str:
     return (
         "<tr>"
         f'<td class="repo-cell">{_esc(report.repo_name)}</td>'
-        f"<td class=\"rate-cell\">{_rate_bar(score['weighted_pass_rate'], score['high_failures'])}</td>"
+        f"<td>{_rate_bar(score['weighted_pass_rate'], score['high_failures'])}</td>"
         f'<td class="num {"has-viol" if score["high_failures"] else ""}">{score["high_failures"] or "—"}</td>'
         f'<td class="num {"has-viol" if violations else ""}">{violations}</td>'
         f'<td class="num muted">{counts.get("COMPLIANT", 0)}</td>'
@@ -387,8 +373,6 @@ td.has-viol{color:var(--high);font-weight:600}
 .repo-name{font-family:var(--mono);font-size:.85rem;font-weight:600;flex:1;min-width:210px}
 .repo-counts{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .repo-body{padding:18px 16px 22px;display:flex;flex-direction:column;gap:20px}
-.gate-reason{margin:0;font-size:.83rem;color:var(--high);
-  background:var(--high-bg);padding:9px 12px;border-radius:3px}
 .clean{margin:0;color:var(--good);font-size:.9rem}
 
 .sev-group{display:flex;flex-direction:column;gap:10px}

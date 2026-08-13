@@ -1,18 +1,15 @@
 """Score generated compliance reports against the hand-authored ground truth.
 
-Reads reports/<repo>/machine_report.json and evaluation/expected/<repo>.yaml
-and reports precision/recall per policy. Costs no API calls: it scores reports
-that already exist, so labels and scoring logic can be iterated for free after
-a single audit run.
+Reads reports/<repo>/machine_report.json against evaluation/expected/<repo>.yaml
+and reports precision/recall per policy. 
 
 Buckets in the expectation files:
   expect_violations -- must fire. Not firing is a false negative.
   expect_clean      -- must not fire. Firing is a false positive.
   tolerate          -- either verdict defensible; excluded from scoring.
 
-A finding that fires but appears in no bucket is reported as UNLABELLED, not
-as a false positive. It may be a real violation the labels missed -- scoring it
-as an error would train the policy set to find less.
+A finding that fires but appears in no bucket is reported as UNLABELLED, never
+as a false positive.
 """
 
 import json
@@ -25,9 +22,8 @@ from agents.schemas import FindingStatus
 
 EXPECTED_DIR = Path(__file__).parent / "expected"
 
-# NEEDS_REVIEW counts as "fired" for recall -- the audit did surface it -- but
-# is tracked separately, since a finding routed to a human is a weaker outcome
-# than a confident finding with a working remediation attached.
+# NEEDS_REVIEW counts as "fired" for recall, the audit did surface it but is
+# tracked separately
 FIRED_STATUSES = {FindingStatus.NON_COMPLIANT.value, FindingStatus.NEEDS_REVIEW.value}
 
 
@@ -80,11 +76,9 @@ def _load_labels(path: Path) -> dict:
 def _label_keys(labels: dict, bucket: str) -> dict[tuple[str, str], str]:
     """Collapse a bucket to {(policy, file): note}.
 
-    Two entries can share a key when one file carries two distinct concerns
-    under one policy (e.g. DQ-1 on a training script for both "validated
-    upstream" and "target leakage"). A finding can only match once, so the
-    keys merge -- but the notes are joined rather than overwritten, so the
-    second concern is not silently lost from the report.
+    Two entries can share a key when one file carries two concerns under one
+    policy. A finding matches only once, so the keys merge -- but the notes are
+    joined rather than overwritten, so the second concern is not lost.
     """
     out: dict[tuple[str, str], str] = {}
     for entry in labels.get(bucket) or []:
@@ -124,8 +118,8 @@ def score_repo(report_path: Path, expected_path: Path) -> RepoResult:
             result.score(policy).fp += 1
             result.false_positives.append((policy, file_path, note))
 
-    for key, note in tolerate.items():
-        result.score(key[0]).tolerated += 1
+    for policy, _ in tolerate:
+        result.score(policy).tolerated += 1
 
     labelled = set(expect_violations) | set(expect_clean) | set(tolerate)
     for key in fired:
@@ -162,7 +156,7 @@ def aggregate(results: list[RepoResult]) -> dict[str, PolicyScore]:
 
 
 def missing_reports(reports_dir: Path) -> list[str]:
-    """Labelled repos with no report -- these are silently excluded from scoring."""
+    """Labelled repos with no report, these are silently excluded from scoring."""
     return [
         p.stem
         for p in sorted(EXPECTED_DIR.glob("*.yaml"))

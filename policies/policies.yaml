@@ -1,36 +1,13 @@
-# Governance policies -- unified set, one coherent list.
+# Governance policies. The single source of truth: rules.md and the ChromaDB
+# collection are both generated from this file. After editing, run
+# scripts/validate_policies.py then scripts/setup_chromadb.py.
 #
-# Sources:
+# Sources: (inside folder /sources)
 #   - Internal Git Workflow Guide (Nilton Ferreira, Nov 2025)
 #   - File Naming Convention (Jordan Russell, Oct 2025)
 #   - Repository Naming Convention (Nilton Ferreira, Nov 2025)
 #   - SQL Naming Conventions (Jordan Russell, Oct 2025)
 #   - Data quality, security, and reproducibility best practices
-#
-# SCHEMA -- each field has exactly one job, and each is consumed by exactly one
-# part of the pipeline. The previous single `evaluation_hint` field mixed four
-# concerns (the rule, its scope, anti-false-positive patches, and remediation
-# advice) into one prose blob per policy, which is how it grew to the point of
-# contradicting itself and having to issue retractions mid-hint.
-#
-#   policy_id    Stable identifier.
-#   title        Short human name.
-#   severity     HIGH | MEDIUM | LOW. Drives risk weighting.
-#   scope        file       -> evaluated against one file at a time.
-#                repository -> evaluated once for the whole repo.
-#   evaluation   model         -> judged by the LLM.
-#                deterministic -> judged in code; never sent to a model.
-#                hybrid        -> partly code, partly model (see `rule`).
-#   applies_to   Glob patterns. A file matching none of them is never even
-#                offered to the model under this policy. This replaces every
-#                "Return NOT_APPLICABLE if the file is a ..." sentence: file
-#                type is a structural fact, and deciding it in code is both
-#                cheaper and not subject to interpretation.
-#   excludes     Glob patterns that win over applies_to.
-#   rule         What compliant looks like. Sent to the model verbatim. Keep it
-#                short: this is the only field the model is asked to apply.
-#   examples     Few-shot anchors, compliant and non-compliant.
-#   description  Human-facing text for reports and rules.md. Not sent to the model.
 
 policies:
 
@@ -162,10 +139,6 @@ policies:
       spaces, and no vague tokens (Untitled, final, copy, v2, ACTUAL, temp).
       A README at the repository root is required. Column names in data files
       are snake_case and singular.
-    # The naming grammar above is regex-decidable, so it is decided in code
-    # (auditor_agent._name_violations) at confidence 1.0 -- including the
-    # rename that repairs it. Only the column rule below reaches a model, which
-    # is why applies_to is limited to data files: nothing else can carry it.
     applies_to: ["**/*.csv", "**/*.parquet"]
     excludes: []
     rule: >
@@ -264,13 +237,6 @@ policies:
       user-story/{id} (feature work). Commit messages use conventional prefixes
       (feat:, fix:, chore:, docs:, refactor:) and each commit is atomic. Pull
       requests link to a user story and require at least one reviewer.
-    # Gated to actual governance control files. Agent instruction files, spec
-    # documents and READMEs mention branch names in prose; they do not enforce
-    # anything, and evaluating them produced findings against documentation.
-    # Matched case-insensitively. The earlier list required the file to be named
-    # exactly azure-pipelines.yml, so FinalProject's pipeline.yml -- a genuine
-    # Azure Pipelines definition with a trigger/branches block -- was never
-    # offered this policy at all. Real repositories name CI files freely.
     applies_to:
       - "azure-pipelines*.yml"
       - "azure-pipelines*.yaml"
@@ -387,10 +353,7 @@ policies:
       Bronze -> Silver -> Gold with no layer skipped.
     applies_to: ["**/*.py", "**/*.ipynb", "**/*.sql"]
     excludes: ["test_*.py", "*_test.py", "conftest.py", "__init__.py"]
-    # Three rules, down from five plus two retractions. The old rules (2) and
-    # (5) were walked back by a later "SCOPE LIMIT" paragraph that reduced both
-    # to the layer-skip rule below; the old bronze-immutability rule moved to
-    # REPRO-14, so exactly one policy now owns "data written over its source".
+    # "Data written over its source" belongs to REPRO-14, not here.
     rule: >
       Treat silver, cleansed, curated, refined, staging, validated and processed
       as the same middle layer, whatever the folder is called, including when a
@@ -436,11 +399,8 @@ policies:
       than a control on par with a missing data quality gate.
     applies_to: []
     excludes: []
-    # Decided in code (auditor_agent._evaluate_dependency_pinning): "does this
-    # line contain an exact version" is a parse, not a judgement. As a model
-    # check it was the pipeline's largest false-positive source -- it fired on
-    # every repo, including six whose manifests were fully pinned, because the
-    # policy told the model the verdict before it looked.
+    # Decided in code (auditor_agent._evaluate_dependency_pinning): whether a
+    # line carries an exact version is a parse, not a judgement.
     rule: >
       Every package in requirements*.txt, environment.yml or pyproject.toml
       carries an exact version, or the repository has a lockfile.

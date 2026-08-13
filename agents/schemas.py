@@ -1,4 +1,9 @@
-"""Shared data contracts for the runtime AGA pipeline (Repository -> Auditor -> Remediation -> Orchestrator)."""
+"""Shared data contracts for pipeline.
+
+Repository -> Auditor -> Remediation -> Orchestrator.
+
+These models publish measurements: a weighted pass rate and counts by severity. 
+"""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -7,20 +12,6 @@ from typing import Optional
 from pydantic import BaseModel, Field, computed_field
 
 SEVERITY_WEIGHT = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-
-# There was a PASS / NEEDS_WORK / FAIL grade here, from a weighted pass rate
-# banded at 98% and 90% with a cap forced by severity. It is gone deliberately.
-#
-# The bands were never validated against anything -- they were a first guess --
-# and on the reference corpus they graded 8 of 10 repositories FAIL, including
-# four sitting above 90% whose only high-severity finding was a single policy.
-# A verdict that lands on almost everything carries no information, and its
-# thresholds were doing more work than the evidence behind them justified.
-#
-# This tool reports; deciding what is acceptable is the reader's call, and the
-# CI gate makes it explicitly with --fail-on <severity>. What is published now
-# is the measurement -- the weighted pass rate plus counts by severity -- which
-# is a fact about the repository rather than an opinion about it.
 
 
 class FileType(str, Enum):
@@ -37,10 +28,8 @@ class FindingStatus(str, Enum):
     """The Auditor's verdict. Only the Auditor may set this.
 
     The Remediation Agent must never write to it: whether a fix could be
-    generated says nothing about whether the violation is real, and conflating
-    the two put 30 confidence-1.0 deterministic naming violations into the
-    "low-confidence, needs human review" bucket. Remediation outcome lives on
-    its own axis, in RemediationStatus.
+    generated says nothing about whether the violation is real. Remediation
+    outcome lives on its own axis, in RemediationStatus.
     """
 
     COMPLIANT = "COMPLIANT"
@@ -64,7 +53,6 @@ class FileRecord(BaseModel):
     path: str
     file_type: FileType
     content: str
-    csv_columns: Optional[list[str]] = None
 
 
 class RepositorySnapshot(BaseModel):
@@ -80,13 +68,10 @@ class Remediation(BaseModel):
 
 
 class Dissent(BaseModel):
-    """What the samples that lost the vote actually said.
+    """What the samples that lost the vote argued.
 
-    Without this, a non-unanimous verdict can only report that disagreement
-    happened -- the minority opinion was discarded with the losing samples, so
-    "2 of 3 runs agreed" was the entire content. Keeping the dissenting verdict
-    is what makes a near-miss reviewable: a check that passed 2-1 is worth a
-    human's time only if you can read the argument for the other side.
+    A check that passed 2-1 is worth a human's time only if the losing argument
+    is readable.
     """
 
     status: FindingStatus
@@ -102,10 +87,6 @@ class Finding(BaseModel):
     status: FindingStatus
     confidence_score: float = Field(ge=0.0, le=1.0)
     evidence: str
-    # The model's own working-out. Given its own field so the model stops using
-    # `evidence` as a scratchpad -- deliberation leaking into evidence ("...does
-    # it end with Fact? It does... Overall compliant.") is what the retired
-    # prose-regex guard was trying to catch after the fact.
     reasoning: str = ""
     retrieval_chunk_id: str
     retrieval_score: float
@@ -115,12 +96,11 @@ class Finding(BaseModel):
     # Set only when the samples did not agree. See Dissent.
     dissent: Optional[Dissent] = None
 
-    # There was a per-finding `risk_score = SEVERITY_WEIGHT * confidence` here.
-    # It is gone: once confidence became a measured agreement rate it sat at 1.0
-    # for 89% of findings, so risk_score equalled the severity weight in 66 of 69
-    # violations and restated `severity` with occasional noise. Severity and
-    # confidence are both on the finding already, and ComplianceReport.
-    # compliance_score is the aggregate that actually normalises for repo size.
+    @property
+    def has_computed_fix(self) -> bool:
+        """True when the fix was derived in code and re-checked, not written by the
+        model. Plain property, not computed_field, so it stays out of the report JSON."""
+        return self.policy_id == "NAM-5" and self.confidence_score == 1.0
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -140,18 +120,10 @@ class ComplianceReport(BaseModel):
     run_timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     findings: list[Finding] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
-    # Distinct OpenAI system_fingerprint values seen during the run. More than
-    # one value, or a change between runs, means the serving backend moved --
-    # which distinguishes "our pipeline is non-deterministic" from "the model
-    # underneath us changed". Without it the two are indistinguishable.
     model_fingerprints: list[str] = Field(default_factory=list)
-    # The self-consistency k this run used. Recorded because it changes what
-    # confidence_score means: at k=1 no disagreement is measurable, so every
-    # confidence is 1.0 and the remediation confidence gate never fires. Two
-    # reports are only comparable if this matches.
     audit_samples: int = 1
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  
     @property
     def summary(self) -> dict:
         by_status: dict[str, int] = {}
@@ -164,8 +136,6 @@ class ComplianceReport(BaseModel):
                 by_remediation_status[f.remediation_status.value] = (
                     by_remediation_status.get(f.remediation_status.value, 0) + 1
                 )
-        # applicable_checks is the denominator any compliance rate has to use:
-        # NOT_APPLICABLE is a check that was correctly skipped, not one that passed.
         applicable = by_status.get("COMPLIANT", 0) + by_status.get("NON_COMPLIANT", 0)
         return {
             "total_findings": len(self.findings),
@@ -177,24 +147,16 @@ class ComplianceReport(BaseModel):
             "needs_human_attention": sum(1 for f in self.findings if f.needs_human_attention),
         }
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  
     @property
     def compliance_score(self) -> dict:
         """Severity-weighted pass rate over applicable checks, plus severity counts.
 
-        Replaces the previous practice of summing per-finding risk_score, which
-        was unnormalised: a 345-check repository with 5 violations and a 66-check
-        repository with 5 violations scored three points apart, so repo size
-        moved the number as much as repo quality did.
+        NOT_APPLICABLE is excluded from the denominator: a check correctly skipped
+        is not a check passed. NEEDS_REVIEW is excluded from both sides and
+        reported separately, since an undecided verdict is evidence for neither
 
-        NOT_APPLICABLE is excluded from the denominator -- a check that was
-        correctly skipped is not a check that passed. NEEDS_REVIEW is excluded
-        from both sides and reported separately: an undecided verdict is not
-        evidence either way, and burying it in the rate would let a repository
-        score well by being unreadable.
-
-        No pass/fail verdict is derived from any of this -- see the note at the
-        top of the module.
+        Weighting normalises for repository size.
         """
         earned = possible = 0
         high_failures = medium_failures = low_failures = 0

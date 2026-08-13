@@ -1,16 +1,10 @@
 """Remediation Agent: turns NON_COMPLIANT findings into a concrete fix.
 
-This agent NEVER writes to finding.status. Whether a fix could be produced is
-independent of whether the violation is real, and collapsing the two axes was a
-bug with teeth: a deterministic, confidence-1.0 naming violation whose fix the
-model declined to write was being restated as a low-confidence finding needing
-human review. Every outcome here is recorded on finding.remediation_status
-instead, leaving the Auditor's verdict intact.
+Confidence gate: findings below CONFIDENCE_THRESHOLD get no generated fix. An
+uncertain verdict must not produce an executable command that could be
+misapplied. They stay NON_COMPLIANT, marked SKIPPED_LOW_CONFIDENCE.
 
-Confidence gate (pitch improvement 4.4): findings below CONFIDENCE_THRESHOLD get
-no auto-generated remediation -- an uncertain Auditor verdict must not produce an
-executable command that could be misapplied to the wrong resource. They stay
-NON_COMPLIANT and are marked SKIPPED_LOW_CONFIDENCE.
+Every generated fix must also clear the safety net below before it is attached.
 """
 
 import re
@@ -21,6 +15,7 @@ from openai import OpenAI
 
 from agents.llm_client import chat_json, get_client
 from agents.schemas import Finding, FindingStatus, Remediation, RemediationStatus
+
 
 CONFIDENCE_THRESHOLD = 0.6
 POLICIES_PATH = "policies/policies.yaml"
@@ -69,7 +64,9 @@ Respond with a single JSON object:
 """
 
 # --- fix safety net ---------------------------------------------------------
-# The prompt above asks for these; this rejects them if the model does it anyway.
+# These patterns re-check the model's output and refuse anything destructive.
+# The dangerous cases look reasonable ;`printf 'a,b\n' > data.csv` reads as
+# "correct the header" and silently discards every row in the file.
 
 # A path to a data file: quoted, or unquoted with backslash-escaped spaces
 # (`data/ethanol\ market\ rate.csv`), which a naive token match would miss.
@@ -101,23 +98,23 @@ def _reject_fix(description: str, fix: str) -> str | None:
     return None
 
 
-def _load_policy_hints() -> dict[str, str]:
-    """policy_id -> evaluation_hint, so a fix can be checked against the rule it must satisfy."""
+def _load_policy_rules() -> dict[str, str]:
+    """policy_id -> rule text, so a fix can be checked against the rule it must satisfy."""
     try:
         data = yaml.safe_load(Path(POLICIES_PATH).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError):
         return {}
-    return {p["policy_id"]: p.get("evaluation_hint", "").strip() for p in data.get("policies", [])}
+    return {p["policy_id"]: (p.get("rule") or "").strip() for p in data.get("policies", [])}
 
 
-def _build_user_content(finding: Finding, file_content: str | None, policy_hint: str | None) -> str:
+def _build_user_content(finding: Finding, file_content: str | None, policy_rule: str | None) -> str:
     parts = [
         f"Policy: {finding.policy_id} - {finding.title} [{finding.severity}]",
         f"File: {finding.file_path or '(repository-level)'}",
         f"Evidence: {finding.evidence}",
     ]
-    if policy_hint:
-        parts.append(f"--- policy evaluation criteria (your fix must satisfy these) ---\n{policy_hint}")
+    if policy_rule:
+        parts.append(f"--- policy evaluation criteria (your fix must satisfy these) ---\n{policy_rule}")
     if file_content:
         parts.append(f"--- file content ---\n{file_content}\n--- end file content ---")
     return "\n".join(parts)
@@ -138,17 +135,16 @@ def remediate(
     """
     client = client or get_client()
     errors: list[str] = []
-    policy_hints = _load_policy_hints()
+    policy_rules = _load_policy_rules()
 
     for finding in findings:
         if finding.status != FindingStatus.NON_COMPLIANT:
             finding.remediation_status = RemediationStatus.NOT_REQUIRED
             continue
 
-        # The Auditor already derived a deterministic fix (file renames, README
-        # scaffold) or established that none exists. Re-asking a model would only
-        # let it second-guess a confidence-1.0 grammar check by reading the file's
-        # contents, which have nothing to do with the violation.
+        # The Auditor already derived a deterministic fix, or established that
+        # none exists. Re-asking the model would only let it second-guess a
+        # grammar check by reading file contents the check never looked at.
         if finding.remediation is not None:
             finding.remediation_status = RemediationStatus.AUTO_FIXED
             continue
@@ -168,15 +164,14 @@ def remediate(
             payload = chat_json(
                 client,
                 SYSTEM_PROMPT,
-                _build_user_content(finding, file_content, policy_hints.get(finding.policy_id)),
+                _build_user_content(finding, file_content, policy_rules.get(finding.policy_id)),
                 fingerprints,
             )
             description, fix = payload["description"], payload["fix"]
 
             rejection = _reject_fix(description, fix)
             if rejection:
-                # An unsafe or empty fix must never reach the report as something
-                # runnable -- but the violation stands regardless.
+                # The fix is withheld; the violation stands regardless.
                 finding.remediation_status = (
                     RemediationStatus.NO_FIX_AVAILABLE
                     if "no violation to fix" in rejection or "no-op" in rejection
@@ -187,7 +182,7 @@ def remediate(
 
             finding.remediation = Remediation(description=description, fix=fix)
             finding.remediation_status = RemediationStatus.AUTO_FIXED
-        except Exception as exc:  # noqa: BLE001 - one failed remediation must not abort the run
+        except Exception as exc:  # one failed remediation must not abort the run
             finding.remediation_status = RemediationStatus.FAILED
             finding.remediation_note = str(exc)
             errors.append(f"Remediation Agent failed on {finding.policy_id} ({finding.file_path}): {exc}")

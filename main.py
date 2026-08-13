@@ -1,4 +1,4 @@
-"""CLI entrypoint for the runtime AGA audit pipeline (Git-only path)."""
+"""CLI entrypoint for the runtime audit pipeline (Git-only path)."""
 
 import subprocess
 import sys
@@ -9,11 +9,12 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
+# Before the agents imports, not after: auditor_agent reads AGA_AUDIT_SAMPLES at
+# import time and freezes it, so loading .env later would silently ignore it.
 load_dotenv()
 
-from agents import gate  # noqa: E402
-from agents.auditor_agent import _resolve_samples as resolve_samples  # noqa: E402
-from agents.orchestrator import (  # noqa: E402 - must load .env before importing agents
+from agents.auditor_agent import _resolve_samples as resolve_samples
+from agents.orchestrator import (  
     load_reports,
     run_audit,
     write_batch_html,
@@ -29,47 +30,6 @@ SAMPLES_HELP = (
     "verdict is the majority; confidence is the fraction that agreed. k=1 is cheapest "
     "but measures no disagreement, so every confidence is 1.0. Default: 3."
 )
-FAIL_ON_HELP = (
-    "Exit 1 if any NON_COMPLIANT finding is at this severity or above "
-    "(LOW|MEDIUM|HIGH). Off by default."
-)
-FAIL_ON_ERROR_HELP = (
-    "Exit 1 if the audit had partial failures. Without this, a run that errors on "
-    "most of its files can report a flattering pass rate and a green build."
-)
-
-SEVERITY_DOT = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "dim"}
-
-
-def _render_gate(result: gate.GateResult, thresholds: str) -> None:
-    """Print the gate decision. Counts show whether it passed or failed, so a
-    green build still reports what was actually evaluated."""
-    style = "green" if result.passed else "red"
-    console.print(f"\n[bold {style}]Gate: {result.label}[/bold {style}]   [dim]{thresholds}[/dim]")
-    console.print(
-        f"  HIGH {result.high}  ·  MEDIUM {result.medium}  ·  LOW {result.low}  ·  "
-        f"undecided {result.undecided}  ·  errors {result.errors}"
-    )
-    for reason in result.reasons:
-        console.print(f"\n  [red]✗[/red] {reason}")
-    for finding in result.tripped[:10]:
-        colour = SEVERITY_DOT.get(finding.severity, "dim")
-        location = finding.file_path or "(repository-level)"
-        console.print(
-            f"      [{colour}]{finding.policy_id:<9}[/{colour}] [{finding.severity}]  "
-            f"{location}  [dim]{finding.evidence[:70]}[/dim]"
-        )
-    if len(result.tripped) > 10:
-        console.print(f"      [dim]... and {len(result.tripped) - 10} more — see the report[/dim]")
-
-
-def _thresholds_label(fail_on, fail_on_error) -> str:
-    parts = []
-    if fail_on:
-        parts.append(f"--fail-on {fail_on.value}")
-    if fail_on_error:
-        parts.append("--fail-on-error")
-    return "  ".join(parts) if parts else "no thresholds set — reporting only"
 
 
 @app.command()
@@ -77,8 +37,6 @@ def audit(
     repo: str = typer.Option(..., "--repo", help="Path to the local repository to audit"),
     out: str = typer.Option("reports", "--out", help="Base directory for machine_report.json / draft_report.md"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
-    fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
-    fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
     open_dashboard: bool = typer.Option(False, "--open",
                                         help="Open the interactive dashboard on this repository afterwards."),
 ) -> None:
@@ -93,16 +51,8 @@ def audit(
     console.print(f"Machine report: {machine_path}")
     console.print(f"Draft report:   {draft_path}")
 
-    result = gate.evaluate(report, fail_on, fail_on_error)
-    _render_gate(result, _thresholds_label(fail_on, fail_on_error))
-
     if open_dashboard:
-        # Before the gate exits: a failing audit is exactly when you want to look
-        # at the findings, so the dashboard must not be skipped by a non-zero exit.
         _launch_dashboard(out, report.repo_name)
-
-    if not result.passed:
-        raise typer.Exit(result.exit_code)
 
 
 @app.command()
@@ -111,8 +61,6 @@ def batch(
     out: str = typer.Option("reports", "--out", help="Base directory for all reports"),
     category: str = typer.Option("", "--category", help="Only run repos under this category subfolder (e.g. compliant)"),
     samples: int = typer.Option(None, "--samples", "-k", min=1, help=SAMPLES_HELP),
-    fail_on: gate.SeverityGate = typer.Option(None, "--fail-on", case_sensitive=False, help=FAIL_ON_HELP),
-    fail_on_error: bool = typer.Option(False, "--fail-on-error", help=FAIL_ON_ERROR_HELP),
 ) -> None:
     """Audit every repository found under --root and print a summary table.
 
@@ -143,70 +91,46 @@ def batch(
     console.print(f"\n[bold]Batch audit — {len(repo_paths)} repos, k={effective_k}[/bold]\n")
 
     results = []
-    gate_results: list[gate.GateResult] = []
     failed = 0
     for cat, repo_dir in repo_paths:
         console.print(f"  Auditing [cyan]{cat}/{repo_dir.name}[/cyan] ...")
         try:
             report = run_audit(str(repo_dir), samples=samples)
-            machine_path, draft_path = write_reports(report, out)
+            write_reports(report, out)
             s = report.summary
             sc = report.compliance_score
-            repo_gate = gate.evaluate(report, fail_on, fail_on_error)
-            gate_results.append(repo_gate)
             results.append({
-                "gate": repo_gate.label,
                 "category": cat,
                 "repo": report.repo_name,
                 "rate": "—" if sc["weighted_pass_rate"] is None else f"{sc['weighted_pass_rate']:.1%}",
-                "total": s["total_findings"],
-                "compliant": s["by_status"].get("COMPLIANT", 0),
                 "non_compliant": s["by_status"].get("NON_COMPLIANT", 0),
                 "needs_review": s["by_status"].get("NEEDS_REVIEW", 0),
-                "not_applicable": s["by_status"].get("NOT_APPLICABLE", 0),
                 "human_action": s["needs_human_attention"],
                 "errors": len(report.errors),
             })
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # one crashed repo must not stop the batch
             console.print(f"    [red]FAILED: {exc}[/red]")
-            # A repo that crashed produced no verdict. It must never read as a
-            # pass, whatever the thresholds are -- there is nothing to pass.
-            gate_results.append(gate.GateResult(
-                passed=False,
-                reasons=[f"{repo_dir.name}: the audit crashed ({exc})"],
-                errors=1,
-            ))
-            results.append({"gate": "FAIL", "category": cat, "repo": repo_dir.name, "rate": "—",
-                             "total": "—", "compliant": "—",
-                             "non_compliant": "—", "needs_review": "—", "not_applicable": "—",
+            results.append({"category": cat, "repo": repo_dir.name, "rate": "—",
+                             "non_compliant": "—", "needs_review": "—",
                              "human_action": "—", "errors": "CRASH"})
             failed += 1
 
-    # Summary table. Deliberately narrow: total / compliant / not-applicable
-    # counts are all in machine_report.json and none of them change a decision,
-    # while twelve columns squeezed every value down to four characters.
     table = Table(title="\nBatch Audit Summary", show_lines=True)
     table.add_column("Category", style="dim")
     table.add_column("Repo")
-    table.add_column("Gate")
     table.add_column("Rate", justify="right")
     table.add_column("Violations", justify="right", style="red")
     table.add_column("Undecided", justify="right", style="yellow")
     # Non-compliant findings with no usable auto-fix, plus undecided verdicts.
-    # The queue a person actually has to work through -- distinct from
+    # The queue a person actually has to work through , distinct from
     # "Undecided", which is only the verdicts the audit could not settle.
     table.add_column("To action", justify="right", style="yellow")
     table.add_column("Errors", justify="right")
 
-    gating = bool(fail_on or fail_on_error)
     for r in results:
         err_str = str(r["errors"])
-        gate_cell = "[dim]—[/dim]"
-        if gating or r["gate"] == "FAIL":
-            gate_style = "green" if r["gate"] == "PASS" else "red"
-            gate_cell = f"[{gate_style}]{r['gate']}[/{gate_style}]"
         table.add_row(
-            r["category"], r["repo"], gate_cell, str(r["rate"]),
+            r["category"], r["repo"], str(r["rate"]),
             str(r["non_compliant"]), str(r["needs_review"]), str(r["human_action"]),
             f"[red]{err_str}[/red]" if r["errors"] else err_str,
         )
@@ -218,11 +142,7 @@ def batch(
         console.print(f"Dashboard:          [bold]{write_batch_html(written, out)}[/bold]")
     if failed:
         console.print(f"[red]{failed} repo(s) crashed during audit.[/red]")
-
-    combined = gate.worst(gate_results)
-    _render_gate(combined, _thresholds_label(fail_on, fail_on_error))
-    if not combined.passed:
-        raise typer.Exit(combined.exit_code)
+        raise typer.Exit(1)
 
 
 DASHBOARD_SCRIPT = Path(__file__).parent / "dashboard.py"
@@ -249,7 +169,11 @@ def dashboard(
     reports: str = typer.Option("reports", "--reports", help="Directory holding <repo>/machine_report.json"),
     repo: str = typer.Option(None, "--repo", help="Open this repository first"),
 ) -> None:
-    """Open the interactive dashboard for an existing run. Makes no API calls."""
+    """Open the interactive dashboard for an existing run.
+
+    Viewing costs nothing, but the sidebar can start a new audit, which does
+    call the API — so this needs the Azure credentials in the environment.
+    """
     if not load_reports(reports):
         console.print(f"[red]No machine_report.json found under {reports}[/red]")
         raise typer.Exit(1)
@@ -288,7 +212,7 @@ def evaluate(
     details: bool = typer.Option(True, "--details/--no-details", help="List the individual FN / FP / unlabelled findings"),
 ) -> None:
     """Score existing reports against evaluation/expected/*.yaml. Makes no API calls."""
-    from evaluation.score import aggregate, missing_reports, score_all  # noqa: PLC0415 - keeps CLI startup light
+    from evaluation.score import aggregate, missing_reports, score_all  # keeps CLI startup light
 
     reports_dir = Path(reports)
     if not reports_dir.is_dir():

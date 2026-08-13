@@ -33,7 +33,7 @@ def run_audit(
 
     try:
         snapshot = repository_agent.scan(repo_path)
-    except Exception as exc:  # noqa: BLE001 - nothing downstream can run without a snapshot
+    except Exception as exc:  # nothing downstream can run without a snapshot
         return ComplianceReport(
             repo_name=Path(repo_path).name,
             repo_path=repo_path,
@@ -55,7 +55,7 @@ def run_audit(
         )
         report.findings.extend(findings)
         report.errors.extend(audit_errors)
-    except Exception as exc:  # noqa: BLE001 - e.g. ChromaDB unreachable
+    except Exception as exc:  # e.g. ChromaDB unreachable
         report.errors.append(f"Auditor Agent failed: {exc}")
         report.model_fingerprints = sorted(set(fingerprints))
         return report
@@ -66,7 +66,7 @@ def run_audit(
             report.findings, file_content_by_path, client=client, fingerprints=fingerprints
         )
         report.errors.extend(remediation_errors)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # a failed remediation must not discard the findings
         report.errors.append(f"Remediation Agent failed: {exc}")
 
     report.model_fingerprints = sorted(set(fingerprints))
@@ -127,18 +127,25 @@ def _render_finding(finding: Finding) -> list[str]:
         f"**Sample agreement:** {finding.confidence_score:.0%}",
         f"**Evidence:** {finding.evidence}",
     ]
+    if finding.dissent:
+        # A split verdict is only reviewable if the losing argument is readable.
+        d = finding.dissent
+        block.append(
+            f"**Dissent:** {d.samples} sample(s) said {d.status.value} — {d.evidence}"
+        )
     if finding.remediation:
+        # A derived fix was re-checked before being offered; a model-written one was not.
+        label = "Computed fix" if finding.has_computed_fix else "Suggested fix"
         block += [
             "",
-            f"**Suggested fix:** {finding.remediation.description}",
+            f"**{label}:** {finding.remediation.description}",
             "",
             "```",
             finding.remediation.fix,
             "```",
         ]
     elif finding.status == FindingStatus.NON_COMPLIANT:
-        # Say why there is no fix, rather than silently omitting the section.
-        # The violation stands either way -- only the automation stopped.
+        # Say why there is no fix
         label = _NO_FIX_LABEL.get(finding.remediation_status, "No fix attached")
         note = f": {finding.remediation_note}" if finding.remediation_note else "."
         block += ["", f"**{label}**{note}"]
@@ -204,8 +211,8 @@ def _render_draft_report(report: ComplianceReport) -> str:
 
     non_compliant = sorted((f for f in report.findings if f.status == FindingStatus.NON_COMPLIANT), key=_sort_key)
     needs_review = sorted((f for f in report.findings if f.status == FindingStatus.NEEDS_REVIEW), key=_sort_key)
-    compliant = [f for f in report.findings if f.status == FindingStatus.COMPLIANT]
-    not_applicable = [f for f in report.findings if f.status == FindingStatus.NOT_APPLICABLE]
+    compliant = sum(1 for f in report.findings if f.status == FindingStatus.COMPLIANT)
+    not_applicable = sum(1 for f in report.findings if f.status == FindingStatus.NOT_APPLICABLE)
 
     if non_compliant:
         lines += ["## Non-compliant findings", ""]
@@ -225,7 +232,7 @@ def _render_draft_report(report: ComplianceReport) -> str:
     lines += [
         "## Checks that passed or did not apply",
         "",
-        f"{len(compliant)} checks passed; {len(not_applicable)} did not apply to this repository. "
+        f"{compliant} checks passed; {not_applicable} did not apply to this repository. "
         f"See machine_report.json for the full list.",
         "",
     ]
