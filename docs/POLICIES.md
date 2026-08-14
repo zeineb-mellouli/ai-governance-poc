@@ -5,9 +5,7 @@ ChromaDB collection are both generated from it — never edit either by hand.
 
 ## The library
 
-14 policies. The differentiator against off-the-shelf compliance tooling is that
-these encode **organisation-specific convention** — department codes, the
-`CamelCase_yyyy-MM-dd` grammar, medallion flow — not a generic GDPR/SOC2 pack.
+14 policies. 
 
 | ID | Severity | Scope | Evaluation | Covers |
 |---|---|---|---|---|
@@ -73,11 +71,6 @@ cannot volunteer a verdict on it. Matching is case-insensitive and tested agains
 both the full repo-relative path and the bare filename; a leading `**/` is
 tolerated.
 
-Case-insensitivity is deliberate: `fnmatch` follows platform case rules, so
-`*pipeline*.yml` would match `Treasury_Pipeline/x.yml` on Windows but not macOS.
-The same repository would otherwise be audited differently depending on who ran
-it.
-
 **`rule`** — the only text the model is told is authoritative. It is also what
 the Remediation Agent is shown so its fix satisfies the rule it is repairing.
 
@@ -96,52 +89,9 @@ example to sharpening rule text.
 
 `scripts/validate_policies.py` catches the mistakes the schema makes possible: a missing
 `rule`, an invalid `scope`/`evaluation`/`severity`, a duplicate `policy_id`, and
-a file-scoped model policy with an empty `applies_to` — which would be silently
-dead, never offered and never missed.
+a file-scoped model policy with an empty `applies_to`.
 
 If you add, remove, or rename a `policy_id`, update `evaluation/expected/*.yaml`
 too. Ground truth keys on `(policy_id, file)`, so a rename shows up as a false
 negative plus an unlabelled finding.
 
-## Tuning discipline
-
-**This is the part that costs the most time to relearn.** Two rules, both learned
-by regression.
-
-### 1. Do not sharpen a rule to catch one missed case
-
-Two attempts did exactly this and both got worse:
-
-| Change | Result |
-|---|---|
-| ARCH-12 "judge per dataset" | F1 0.80 → 0.40, and never caught its target case |
-| DM-7 "a name is not a grain" | F1 0.67 → 0.50, by flagging repos the policy does not govern |
-
-These rules are read by a model that generalises. Emphasis added to one sub-rule
-crowds out the others — after ARCH-12's rule (2) was expanded, the model stopped
-applying rule (3) entirely on a file it had previously caught.
-
-Reach for `examples` instead. An example teaches a case; a sharpened rule
-re-teaches the whole policy.
-
-### 2. Check the ground truth is self-consistent before touching the rule
-
-A DM-7 label demanded a violation on `FinalProject` (no gold layer, no Dim/Fact
-table) while `fin-code-filing_deadline_tracker` demanded `NOT_APPLICABLE` for the
-identical structure. No rule text could satisfy both — that contradiction, not
-the rule, was capping DM-7 at 0.50.
-
-Before editing rule text:
-
-- Verify the change against **every** label for that policy, not just the failing
-  one. A script that reads the sample source and re-derives the expected bucket
-  catches contradictions the eval table hides.
-- Put genuinely ambiguous cases in `tolerate` with a note. That bucket exists so
-  ambiguity can be recorded rather than forced.
-- Remember that per-policy F1 on 1–2 labelled cases is an anecdote, not a
-  statistic. Only NAM-5 (30 instances) and DQ-1 (5) carry enough weight to mean
-  anything.
-- Expect residual noise. k=3 voting damps run-to-run variance but does not remove
-  it: SQL-11 has flipped between runs on identical policy text.
-
-See [EVALUATION.md](EVALUATION.md) for how to measure any of this.

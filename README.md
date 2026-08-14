@@ -36,9 +36,6 @@ Run every command from the repository root.
 | `main.py dashboard --reports DIR` | Open the Streamlit dashboard | only if you audit from it |
 | `main.py eval --reports DIR` | Score reports against ground truth | no |
 
-The pipeline reports rather than deciding: an audit exits `0` whether or not it
-found violations. To block a build on findings, read `machine_report.json` in a
-following CI step — see [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Documentation
 
@@ -46,9 +43,8 @@ following CI step — see [docs/OPERATIONS.md](docs/OPERATIONS.md).
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | You need to know how a verdict is produced and why the design is shaped this way |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | You are running it, wiring it into CI, or debugging a run |
-| [docs/POLICIES.md](docs/POLICIES.md) | You are adding or changing a policy — **read the tuning discipline first** |
+| [docs/POLICIES.md](docs/POLICIES.md) | You are setting the policies |
 | [docs/EVALUATION.md](docs/EVALUATION.md) | You are measuring accuracy or changed a rule and need to prove it helped |
-| [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) | You are the one shipping this. Start here |
 
 ## Layout
 
@@ -63,31 +59,17 @@ evaluation/      scoring harness and hand-authored ground truth
 sample_repos/    10 labelled fixture repositories across 9 categories
 docs/            architecture, operations, policies, evaluation, production readiness
 
-reports/         audit output, one folder per repository — reference only, run at k=1
+final_reports/   audit output, one folder per repository — run at k=3
 rules.md         generated from policies.yaml — do not edit by hand
 chroma_db/       the vector store, gitignored — rebuild it with scripts/setup_chromadb.py
 ```
 
-The root holds only what you run directly. Everything under `scripts/` derives an
-artifact from `policies/policies.yaml` and runs from the repository root.
-
 Three files are **generated, never edited by hand**: `rules.md`, `chroma_db/`,
-and `reports/`. All three come from `policies/policies.yaml` plus an audit run.
-
-## Three things that will bite you
+and `final_reports/`. All three come from `policies/policies.yaml` plus an audit run.
 
 **The vector store is not rebuilt automatically.** Edit `policies/policies.yaml`
 and you must re-run `scripts/setup_chromadb.py`, or the audit silently retrieves
-against the old policy text — no error, just stale rules.
-
-**Reports quote the secrets they find.** Evidence grounding requires verbatim
-quotes, so a hardcoded credential caught by SEC-3 ends up in
-`machine_report.json`. Treat report output as sensitive — see
-[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md).
-
-**The dashboard can spend money.** Its sidebar has an *Audit a repository* panel
-that runs a real audit at up to k=5. Viewing existing reports costs nothing; that
-button does not.
+against the old policy text, no error, just stale rules.
 
 ## Handing this over
 

@@ -76,13 +76,6 @@ Results are merged by `_dedupe_holistic`, which neutralises duplicate verdicts t
 ### Remediation Agent — `agents/remediation_agent.py`
 
 Attaches a fix to each `NON_COMPLIANT` finding, or records why there isn't one.
-
-**It never writes to `finding.status`.** Whether a fix could be produced says
-nothing about whether the violation is real. Outcomes live on the separate
-`remediation_status` axis. Collapsing the two axes is a real bug: it turns a
-confidence-1.0 naming violation whose fix the model declined to write into a
-"low-confidence, needs human review" finding.
-
 Fixes the Auditor already derived deterministically (renames, README scaffold)
 are not re-sent to the model. Findings below `CONFIDENCE_THRESHOLD` (0.6) get no
 fix at all — an uncertain verdict must not yield a runnable command.
@@ -136,10 +129,6 @@ Four mechanisms, each addressing a different source of drift:
 list, independent of model output. Two runs of one repo differing in
 `total_findings` means an API call failed — check `errors`, not the prompts.
 
-Nothing enforces this automatically. It rests on two rules that are easy to break
-by accident: the model must return one verdict per candidate policy, and
-`_dedupe_holistic` must neutralise duplicate rows rather than drop them. Check
-both after any change to the auditor.
 
 ## How a verdict is derived
 
@@ -152,16 +141,6 @@ The model never states a status. It answers two booleans and supplies a quote:
 | `violation_present: true` + quote found in the file | `NON_COMPLIANT` |
 | `violation_present: true` + quote **not** found | `NEEDS_REVIEW` |
 | `violation_present` unset while the policy applies | `NEEDS_REVIEW` |
-
-Deriving the status from booleans makes a verdict that contradicts its own
-evidence *unrepresentable*, rather than something to detect afterwards by
-pattern-matching prose.
-
-The quote check (`ENFORCE_EVIDENCE_GROUNDING`) is the anti-fabrication control:
-the observed failure mode was a per-file verdict asserting facts about a
-different file it had never been shown. Quotes are compared with whitespace
-collapsed, since models re-wrap otherwise-verbatim text. A truncated file skips
-the check — the real quote may sit in the part that was cut.
 
 ## Confidence
 
@@ -191,16 +170,6 @@ not a check passed, and counting them would let a repository score well by havin
 little the policies cover. `NEEDS_REVIEW` is excluded from both sides and
 reported separately; an undecided verdict is not evidence either way.
 
-**There is deliberately no PASS/FAIL grade, and one should not be added back.**
-There was one, banded at 98% and 90% with a severity cap. The bands were never
-validated, and on the sample corpus they graded 8 of 10 repositories FAIL —
-including four above 90% whose only high-severity finding was a single policy. A
-verdict that lands on almost everything carries no information.
-
-This tool reports. Deciding what is acceptable is the reader's call. Read the
-rate together with the high-severity count: 95% with a hardcoded credential is
-not the same as 95% with a naming violation.
-
 ## Data contracts
 
 `agents/schemas.py` holds the Pydantic models shared across stages, and is the
@@ -213,13 +182,3 @@ A consumer that needs a JSON Schema for it can generate one on demand:
 ./venv/bin/python -c "import json; from agents.schemas import ComplianceReport; \
 print(json.dumps(ComplianceReport.model_json_schema(), indent=2))"
 ```
-
-Renaming or retyping a field on `Finding` or `ComplianceReport` is a breaking
-change for anyone reading the JSON, and nothing will warn you.
-
-## Out of scope
-
-A **Config Agent** covering live Azure/Databricks resources was designed and cut.
-The runtime path is Git-only. It is not stubbed and not referenced in code —
-there is nothing to re-enable, and adding it means building it. See
-[PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
