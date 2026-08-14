@@ -70,6 +70,23 @@ Three cautions:
    between runs on identical policy text. A single-point F1 move on a
    low-instance policy is noise until it reproduces.
 
+## What is in `reports/`
+
+The 11 reports committed to the repository are **reference output, not a current
+measurement**. Every one was produced at **k=1**, which has three consequences a
+reader will otherwise misread:
+
+- Every `confidence_score` is exactly 1.0 — that means "no disagreement was
+  measurable", not "the audit was certain".
+- No `dissent` is recorded anywhere, and there are no near-misses, so the
+  dashboard's *Not certain* tab and the HTML report's uncertainty section are
+  both empty. They are not dead code; they need k>1 to populate.
+- No `model_fingerprints` were captured, so these reports cannot tell you which
+  backend served them.
+
+Scores computed from them (`main.py eval --reports reports`) are therefore a
+single-sample result. Re-run the batch at k=3 before quoting accuracy numbers.
+
 ## The corpus
 
 `sample_repos/` holds 10 repositories across categories chosen to exercise

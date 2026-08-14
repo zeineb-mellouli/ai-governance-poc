@@ -62,22 +62,41 @@ scripts/         one-off build steps: setup_chromadb, validate_policies, generat
 evaluation/      scoring harness and hand-authored ground truth
 sample_repos/    10 labelled fixture repositories across 9 categories
 docs/            architecture, operations, policies, evaluation, production readiness
-presentation/    pitch deck and its generators — not part of the pipeline
+
+reports/         audit output, one folder per repository — reference only, run at k=1
 rules.md         generated from policies.yaml — do not edit by hand
+chroma_db/       the vector store, gitignored — rebuild it with scripts/setup_chromadb.py
 ```
 
 The root holds only what you run directly. Everything under `scripts/` derives an
-artifact from `policies/policies.yaml` and is run from the repository root.
+artifact from `policies/policies.yaml` and runs from the repository root.
 
-## Two things that will bite you
+Three files are **generated, never edited by hand**: `rules.md`, `chroma_db/`,
+and `reports/`. All three come from `policies/policies.yaml` plus an audit run.
+
+## Three things that will bite you
 
 **The vector store is not rebuilt automatically.** Edit `policies/policies.yaml`
-and you must re-run `scripts/setup_chromadb.py`, or the audit retrieves against the old
-policy text with no error.
+and you must re-run `scripts/setup_chromadb.py`, or the audit silently retrieves
+against the old policy text — no error, just stale rules.
 
 **Reports quote the secrets they find.** Evidence grounding requires verbatim
 quotes, so a hardcoded credential caught by SEC-3 ends up in
 `machine_report.json`. Treat report output as sensitive — see
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md).
+
+**The dashboard can spend money.** Its sidebar has an *Audit a repository* panel
+that runs a real audit at up to k=5. Viewing existing reports costs nothing; that
+button does not.
+
+## Handing this over
+
+There is **no automated test suite** — verification is a real audit run against
+`sample_repos/`. Before changing anything in `agents/`, read the reproducibility
+contract in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); before changing a
+policy, read the tuning discipline in [docs/POLICIES.md](docs/POLICIES.md). Both
+describe rules that are easy to break by accident and produce no error when you
+do. The known gaps are catalogued in
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md).
 
 ## Licence

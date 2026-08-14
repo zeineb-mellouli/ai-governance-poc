@@ -185,15 +185,25 @@ Re-run `scripts/setup_chromadb.py`; it is not automatic.
 ./venv/bin/python scripts/generate_rules_md.py     # regenerate rules.md
 ```
 
-## Presentation material
+## Verifying a change
 
-`presentation/` holds the pitch deck and its generators; it is not part of the
-pipeline. Run from the repo root:
+There is no automated test suite. To check that a change to `agents/` did not
+break anything, run an audit and compare against a known-good report:
 
 ```bash
-./venv/bin/python presentation/generate_architecture.py   # -> resources/governance_architecture.svg
-./venv/bin/python presentation/generate_slides.py         # -> resources/slides.html
+./venv/bin/python main.py batch --root sample_repos --out reports_new -k 1
+./venv/bin/python main.py eval --reports reports_new --baseline reports
 ```
 
-`resources/` is generated output and is gitignored. `generate_slides.py` reads
-the SVG, so run the architecture script first.
+`-k 1` keeps it to 138 calls instead of 414, and the `eval` Δ F1 column shows any
+policy whose accuracy moved. Two things to check by hand afterwards, because
+nothing checks them for you:
+
+- **Finding counts per repository should be unchanged.** They are a function of
+  the file list, not of model output, so a change in `total_findings` means
+  either an API call failed (check `errors`) or the fixed-grid rules were broken.
+- **The verdict split should be stable.** Compare `by_status` between runs; large
+  movement without a policy change points at the auditor, not the model.
+
+See [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) §9 for what this does and
+does not cover.
