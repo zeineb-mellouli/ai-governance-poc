@@ -1,7 +1,7 @@
 # Evaluation
 
 The eval harness is the measurement instrument for every claim about accuracy.
-It costs **no API calls** — it scores reports that already exist, so labels and
+It costs **no API calls** - it scores reports that already exist, so labels and
 scoring logic can be iterated for free after a single audit run.
 
 ```bash
@@ -63,7 +63,7 @@ Two cautions:
 ## The corpus
 
 `sample_repos/` holds 10 repositories across categories chosen to exercise
-different failure modes — `compliant/` (precision control), `non_compliant/`,
+different failure modes - `compliant/` (precision control), `non_compliant/`,
 `adversarial/`, `ambiguous/`, `edge_cases/`, `holistic/` (violations only visible
 across files), `not_applicable/`, `realistic/`, and `sdd_generated/`.
 

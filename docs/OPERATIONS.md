@@ -17,7 +17,7 @@ directory.
 | Variable | Required | Purpose |
 |---|---|---|
 | `AZURE_OPENAI_ENDPOINT` | yes | `https://<resource>.openai.azure.com/` |
-| `AZURE_OPENAI_API_KEY` | yes | — |
+| `AZURE_OPENAI_API_KEY` | yes | - |
 | `AZURE_OPENAI_DEPLOYMENT` | yes | The **deployment** name, not the model name |
 | `AZURE_OPENAI_API_VERSION` | no | The version's date |
 | `AGA_AUDIT_SAMPLES` | no | Default k. `--samples/-k` overrides it |
@@ -38,7 +38,7 @@ run.
 
 The dashboard is the one exception: viewing costs nothing, but its sidebar has an
 **Audit a repository** panel that runs a real audit at up to k=5. That is why it
-loads `.env` — it needs the Azure credentials, not just the report files.
+loads `.env` - it needs the Azure credentials, not just the report files.
 
 Useful flags:
 
@@ -82,19 +82,19 @@ model-decided violation on top.
 
 **Cost control levers,** in the order worth reaching for:
 
-1. `-k 1` — cuts audit calls by two thirds. You lose measured confidence.
+1. `-k 1` - cuts audit calls by two thirds. You lose measured confidence.
 2. Tighten `applies_to` globs so fewer files are candidates.
 3. Extend `SKIP_DIRS` for repository shapes that carry a lot of vendored code.
 
 
 ## Changing policies
 
-`policies/policies.yaml` is the source of truth. After editing — see
+`policies/policies.yaml` is the source of truth. After editing - see
 [POLICIES.md](POLICIES.md) for the rules of engagement:
 
 ```bash
 ./venv/bin/python scripts/validate_policies.py     # schema check, non-zero on problems
-./venv/bin/python scripts/setup_chromadb.py        # REBUILD the vector store — not optional
+./venv/bin/python scripts/setup_chromadb.py        # REBUILD the vector store - not optional
 ./venv/bin/python scripts/generate_rules_md.py     # regenerate rules.md
 ```
 

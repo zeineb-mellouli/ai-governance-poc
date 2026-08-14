@@ -1,7 +1,7 @@
 # Policies
 
 `policies/policies.yaml` is the single source of truth. `rules.md` and the
-ChromaDB collection are both generated from it — never edit either by hand.
+ChromaDB collection are both generated from it - never edit either by hand.
 
 ## The library
 
@@ -51,11 +51,11 @@ ChromaDB collection are both generated from it — never edit either by hand.
 
 ### Field semantics
 
-**`scope`** — `file` policies are judged per file. `repository` policies are
+**`scope`** - `file` policies are judged per file. `repository` policies are
 judged only by the whole-repo pass and are marked `[WHOLE-REPOSITORY ONLY]` in
 that prompt.
 
-**`evaluation`** —
+**`evaluation`** -
 
 - `deterministic`: decided in Python, no model call, confidence 1.0. Adding one
   means writing the check in `auditor_agent.py`; the YAML entry alone does
@@ -65,16 +65,16 @@ that prompt.
   rule is a per-file model question, which is why its `applies_to` is only
   `**/*.csv` and `**/*.parquet`.
 
-**`applies_to` / `excludes`** — applicability is decided **in code**, before the
+**`applies_to` / `excludes`** - applicability is decided **in code**, before the
 model is called. A policy whose globs do not match is never offered, so the model
 cannot volunteer a verdict on it. Matching is case-insensitive and tested against
 both the full repo-relative path and the bare filename; a leading `**/` is
 tolerated.
 
-**`rule`** — the only text the model is told is authoritative. It is also what
+**`rule`** - the only text the model is told is authoritative. It is also what
 the Remediation Agent is shown so its fix satisfies the rule it is repairing.
 
-**`examples`** — appended to the prompt as `compliant example:` /
+**`examples`** - appended to the prompt as `compliant example:` /
 `non_compliant example:` lines. This is the safest place to steer behaviour,
 because an example does not change how the rule generalises. Prefer adding an
 example to sharpening rule text.
@@ -83,7 +83,7 @@ example to sharpening rule text.
 
 ```bash
 ./venv/bin/python scripts/validate_policies.py     # schema check, non-zero on problems
-./venv/bin/python scripts/setup_chromadb.py        # REBUILD the vector store — not optional
+./venv/bin/python scripts/setup_chromadb.py        # REBUILD the vector store - not optional
 ./venv/bin/python scripts/generate_rules_md.py     # regenerate rules.md
 ```
 
