@@ -32,12 +32,9 @@ describes the runtime half; the build-time half is where the rules are applied
 ```
 
 **Build time.** `scripts/generate_rules_md.py` compiles the policy library into
-`rules.md`, titled *Governance Constitution* and split into Part 1 (rules that
-apply unconditionally) and Part 2 (rules gated by `applies_to`). That document is
-the constitution for [GitHub Spec Kit](https://github.com/github/spec-kit), whose
+`rules.md`. That document is the constitution for [GitHub Spec Kit](https://github.com/github/spec-kit), whose
 workflow runs `constitution` then `specify`, `plan`, `tasks` and `implement`: an
-engineer writes intent, and the assistant generates code against the constitution
-rather than against its own defaults.
+engineer writes intent, and the assistant generates code against the constitution.
 
 Two repositories under `sample_repos/sdd_generated/` were produced that way, and
 still carry the toolkit's artifacts: `.specify/memory/constitution.md`,
@@ -56,8 +53,7 @@ from the audit for the same reason, since governance applies to the pipeline tha
 runs in production, not to the documents that specified it.
 
 One caveat for anyone reading those fixtures: their constitutions are a snapshot,
-not a live sync. They cite 12 of the current 14 policies, predating the split
-that produced REPRO-13 and REPRO-14.
+not a live sync. They cite 12 of the current 14 policies, since it was built before the runtime path its constitution is linked to an old version of policies.
 
 ## Stages
 

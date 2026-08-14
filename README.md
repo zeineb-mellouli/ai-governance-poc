@@ -70,8 +70,3 @@ and `final_reports/`. All three come from `policies/policies.yaml` plus an audit
 **The vector store is not rebuilt automatically.** Edit `policies/policies.yaml`
 and you must re-run `scripts/setup_chromadb.py`, or the audit silently retrieves
 against the old policy text, no error, just stale rules.
-
-
-## Licence
-
-See [LICENSE](LICENSE).
